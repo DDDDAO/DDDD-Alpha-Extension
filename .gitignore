@@ -2,7 +2,7 @@
 node_modules/
 
 # Build output
-extension/dist/
+# extension/dist/ - Keep dist for Chrome extension installation
 
 # Editor files
 .DS_Store

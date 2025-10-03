@@ -1,0 +1,34 @@
+{
+  "manifest_version": 3,
+  "name": "Alpha Auto Bot",
+  "version": "0.1.0",
+  "description": "Schedules VWAP monitoring and automation tasks on Binance Alpha pages.",
+  "permissions": ["alarms", "storage", "tabs"],
+  "host_permissions": ["https://www.binance.com/*"],
+  "background": {
+    "service_worker": "dist/background/index.worker.js",
+    "type": "module"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Alpha Auto Bot"
+  },
+  "options_page": "options.html",
+  "content_scripts": [
+    {
+      "matches": ["https://www.binance.com/*"],
+      "js": ["content-loader.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "dist/content/main.content.js",
+        "dist/config/*.js",
+        "dist/lib/*.js"
+      ],
+      "matches": ["https://www.binance.com/*"]
+    }
+  ]
+}

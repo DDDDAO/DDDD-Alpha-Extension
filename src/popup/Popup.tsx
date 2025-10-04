@@ -29,6 +29,15 @@ const STABILITY_FEED_URL = 'https://alpha123.uk/stability/stability_feed_v2.json
 const STABILITY_UPDATE_INTERVAL = 30000; // 30秒更新一次
 const MAX_SPREAD_THRESHOLD = 2.0; // 价差基点阈值
 
+// 币种地址映射
+const COIN_ADDRESSES: Record<string, string> = {
+  'AOP': '0xd5df4d260d7a0145f655bcbf3b398076f21016c7',
+  'ALEO': '0x6cfffa5bfd4277a04d83307feedfe2d18d944dd2',
+  'NUMI': '0xc61eb549acf4a05ed6e3fe0966f5e213b23541ce',
+  'ZEUS': '0xa2be3e48170a60119b5f0400c65f65f3158fbeee',
+  'KOGE': '0xe6df05ce8c8301223373cf5b969afcb1498c5528',
+};
+
 interface StabilityItem {
   n: string; // 币种名称
   p: number; // 价格
@@ -486,9 +495,35 @@ export function Popup(): React.ReactElement {
                   <List.Item style={{ padding: '4px 0', borderBottom: 'none' }}>
                     <Space size="small" style={{ width: '100%', justifyContent: 'space-between' }}>
                       <Space size="small">
-                        <Text strong style={{ fontSize: 13 }}>
-                          {item.n.replace('/USDT', '')}
-                        </Text>
+                        {(() => {
+                          const coinSymbol = item.n.replace('/USDT', '');
+                          const address = COIN_ADDRESSES[coinSymbol];
+                          const url = address
+                            ? `https://www.binance.com/zh-CN/alpha/bsc/${address}`
+                            : null;
+
+                          return url ? (
+                            <a
+                              href={url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              style={{
+                                color: '#1890ff',
+                                fontSize: 13,
+                                fontWeight: 600,
+                                textDecoration: 'none'
+                              }}
+                              onMouseEnter={(e) => e.currentTarget.style.textDecoration = 'underline'}
+                              onMouseLeave={(e) => e.currentTarget.style.textDecoration = 'none'}
+                            >
+                              {coinSymbol}
+                            </a>
+                          ) : (
+                            <Text strong style={{ fontSize: 13 }}>
+                              {coinSymbol}
+                            </Text>
+                          );
+                        })()}
                         <Tag color="success" style={{ fontSize: 11, margin: 0 }}>
                           稳定
                         </Tag>

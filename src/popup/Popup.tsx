@@ -3,6 +3,7 @@ import {
   CheckCircleOutlined,
   ClockCircleOutlined,
   DollarOutlined,
+  InfoCircleOutlined,
   PauseCircleOutlined,
   PlayCircleOutlined,
   TrophyOutlined,
@@ -18,6 +19,7 @@ import {
   Space,
   Statistic,
   Tag,
+  Tooltip,
   Typography,
 } from 'antd';
 import React, { useCallback, useEffect, useId, useRef, useState } from 'react';
@@ -663,7 +665,12 @@ export function Popup(): React.ReactElement {
       <Card title="设置" size="small" style={{ marginBottom: 16 }}>
         <Space direction="vertical" size="middle" style={{ width: '100%' }}>
           <div>
-            <Text type="secondary">价格偏移 (%)</Text>
+            <Space size={6}>
+              <Text type="secondary">价格偏移 (%)</Text>
+              <Tooltip title="工具会自动实时刷新平均价格，并以价格偏移这个设置进行下单。默认值是万分之一，意思是会以比平均价格高万一的价格挂买单，比平均价格低万一的价格挂卖单，大部分币种这样都可以更快成交。如果把价格偏移设置成0，那么会以平均价格同时挂买单和卖单，这样的价差是最小的，但是有不成交的风险。推荐在价格稳定的时候以万1或者万0.5的价格偏移进行下单。">
+                <InfoCircleOutlined style={{ color: '#1677ff' }} />
+              </Tooltip>
+            </Space>
             <InputNumber
               id={spreadId}
               min={0}
@@ -683,7 +690,12 @@ export function Popup(): React.ReactElement {
           </div>
 
           <div>
-            <Text type="secondary">积分系数</Text>
+            <Space size={6}>
+              <Text type="secondary">积分系数</Text>
+              <Tooltip title="koge是1倍积分，如果刷的是2倍或者4倍积分代币，请手动改一下这个数字来确保下面的交易量计算正确。">
+                <InfoCircleOutlined style={{ color: '#1677ff' }} />
+              </Tooltip>
+            </Space>
             <InputNumber
               id={pointsFactorId}
               min={1}
@@ -703,7 +715,12 @@ export function Popup(): React.ReactElement {
           </div>
 
           <div>
-            <Text type="secondary">积分目标</Text>
+            <Space size={6}>
+              <Text type="secondary">积分目标</Text>
+              <Tooltip title="程序开始后会一直运行，直到达到目标积分。常见的几个积分交易量：14分->16,384; 15分->32,768; 16分->65,536">
+                <InfoCircleOutlined style={{ color: '#1677ff' }} />
+              </Tooltip>
+            </Space>
             <InputNumber
               id={pointsTargetId}
               min={1}
@@ -725,7 +742,17 @@ export function Popup(): React.ReactElement {
       </Card>
 
       {snapshot && (
-        <Card title="今日数据统计 (UTC)" size="small">
+        <Card
+          title={
+            <Space size={8}>
+              今日数据统计 (UTC)
+              <Tooltip title="交易量数据和分数数据仅供参考，每次下单都会计算，并不是订单成功才算，如果手动取消订单，交易数据就会失真。更准确的交易数据请查看币安App Alpha活动页面">
+                <InfoCircleOutlined style={{ color: '#1677ff' }} />
+              </Tooltip>
+            </Space>
+          }
+          size="small"
+        >
           <Row gutter={[16, 16]}>
             <Col span={12}>
               <Statistic
@@ -805,7 +832,14 @@ export function Popup(): React.ReactElement {
             </Col>
             <Col span={12}>
               <Statistic
-                title="总成本"
+                title={
+                  <Space size={6}>
+                    总损耗
+                    <Tooltip title="总损耗是简单的初始余额 - 当前余额获得，如果发现损耗很高，可能是因为有一些代币没有被正确卖出导致，请检查代币余额。">
+                      <InfoCircleOutlined style={{ color: '#1677ff' }} />
+                    </Tooltip>
+                  </Space>
+                }
                 value={formatNumber(calculateTotalCost(), {
                   minimumFractionDigits: 2,
                   maximumFractionDigits: 2,
@@ -815,7 +849,7 @@ export function Popup(): React.ReactElement {
             </Col>
             <Col span={12}>
               <Statistic
-                title="成本比率"
+                title="损耗率"
                 value={formatCostRatio(calculateCostRatio())}
                 valueStyle={{ fontSize: 14 }}
               />
@@ -863,20 +897,20 @@ export function Popup(): React.ReactElement {
 
       <div style={{ textAlign: 'center', marginTop: 16 }}>
         <Link
-          href="https://web3.binance.com/referral?ref=DDDDAO"
+          href="https://web3.binance.com/referral?ref=DDDDEXE"
           target="_blank"
           rel="noopener noreferrer"
         >
-          币安钱包交易，手续费9折链接
+          币安钱包绑定邀请码，手续费9折
         </Link>
       </div>
       <div style={{ textAlign: 'center', marginTop: 16 }}>
         <Link
-          href="https://www.binance.com/join?ref=DDDDAO"
+          href="https://www.binance.com/join?ref=DDDDEXE"
           target="_blank"
           rel="noopener noreferrer"
         >
-          注册币安
+          注册币安，手续费8折
         </Link>
       </div>
 

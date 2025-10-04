@@ -8,7 +8,7 @@
 
 **方式一：预构建版本（推荐）**
 
-1. 下载 `dddd-alpha-extension.zip`
+1. 下载 [最新预构建包](https://github.com/DDDDAO/dddd-alpha-extension/releases/download/nightly/dddd-alpha-extension.zip)
 2. 解压到任意文件夹
 3. Chrome 浏览器访问 `chrome://extensions`
 4. 启用**开发者模式**（右上角开关）
@@ -185,7 +185,7 @@ An intelligent Binance Alpha points farming assistant with integrated stability 
 
 **Option 1: Pre-built (Recommended)**
 
-1. Download `dddd-alpha-extension.zip`
+1. Download the [latest prebuilt package](https://github.com/DDDDAO/dddd-alpha-extension/releases/download/nightly/dddd-alpha-extension.zip)
 2. Extract to any folder
 3. Open `chrome://extensions` in Chrome
 4. Enable **Developer mode** (toggle in top-right)

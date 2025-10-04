@@ -27,6 +27,8 @@ import { STORAGE_KEY } from '../config/storageKey.js';
 import type { SchedulerState } from '../lib/storage';
 
 const { Text, Link, Title } = Typography;
+const GITHUB_REPO_URL = 'https://github.com/DDDDAO/DDDD-Alpha-Extension';
+const GITHUB_MARK_URL = new URL('../../assets/github-mark.svg', import.meta.url).href;
 
 const DEFAULT_PRICE_OFFSET_PERCENT = 0.01;
 const DEFAULT_POINTS_FACTOR = 1;
@@ -49,6 +51,8 @@ const COIN_ADDRESSES: Record<string, string> = {
   NUMI: '0xc61eb549acf4a05ed6e3fe0966f5e213b23541ce',
   ZEUS: '0xa2be3e48170a60119b5f0400c65f65f3158fbeee',
   KOGE: '0xe6df05ce8c8301223373cf5b969afcb1498c5528',
+  STAR: '0x8fce7206e3043dd360f115afa956ee31b90b787c',
+  POP: '0xa3cfb853339b77f385b994799b015cb04b208fe6',
 };
 
 interface StabilityItem {
@@ -482,7 +486,7 @@ export function Popup(): React.ReactElement {
             }}
           >
             <img
-              src="/logo.svg"
+              src="/logo.png"
               alt="Logo"
               style={{ width: '32px', height: '32px', display: 'block' }}
             />
@@ -497,6 +501,33 @@ export function Popup(): React.ReactElement {
               />
             </Link>
           </div>
+
+          <Alert
+            type="info"
+            showIcon
+            message="插件说明"
+            description={
+              <Space direction="vertical" size={6} style={{ fontSize: 12 }}>
+                <Text style={{ fontSize: 12, color: '#4a4f55' }}>
+                  本插件仅仅辅助计算挂单价格，并且在网页端模拟人工操作进行填写订单信息并点击下单按钮，不会记录和传输任何敏感数据。
+                </Text>
+                <Text style={{ fontSize: 12, color: '#4a4f55' }}>
+                  插件完全开源免费，仅为学习交流目的，请使用者自行明确是否会因使用插件违反币安Alpha活动规则
+                </Text>
+                <Link href={GITHUB_REPO_URL} target="_blank" rel="noopener noreferrer">
+                  <Space size={6} align="center">
+                    <img
+                      src={GITHUB_MARK_URL}
+                      alt="GitHub"
+                      style={{ width: 16, height: 16, display: 'block' }}
+                    />
+                    <span style={{ fontSize: 12 }}>查看 GitHub 开源仓库</span>
+                  </Space>
+                </Link>
+              </Space>
+            }
+            style={{ marginBottom: 8 }}
+          />
 
           <Card
             title={
@@ -604,61 +635,6 @@ export function Popup(): React.ReactElement {
               </Text>
             </Space>
           </Card>
-
-          <Space size="small" style={{ width: '100%', justifyContent: 'center' }}>
-            <Button
-              type="primary"
-              icon={<PlayCircleOutlined />}
-              loading={controlsBusy}
-              disabled={controlsBusy || isEnabled || !canOperate}
-              onClick={() => void handleStart()}
-              size="large"
-            >
-              启动
-            </Button>
-            <Button
-              danger
-              icon={<PauseCircleOutlined />}
-              loading={controlsBusy}
-              disabled={controlsBusy || !isEnabled}
-              onClick={() => void handleStop()}
-              size="large"
-            >
-              停止
-            </Button>
-          </Space>
-
-          {!activeTab.isSupported && (
-            <Alert
-              message="需要打开 Binance Alpha 代币页面"
-              description={
-                <Link href={DEFAULT_BINANCE_ALPHA_URL} target="_blank" rel="noopener noreferrer">
-                  点击此处打开
-                </Link>
-              }
-              type="warning"
-              showIcon
-            />
-          )}
-
-          {state?.lastError && (
-            <Alert message="错误" description={state.lastError} type="error" showIcon closable />
-          )}
-
-          {isEnabled && (
-            <Alert message={'自动化运行中'} type={isRunning ? 'success' : 'info'} showIcon />
-          )}
-
-          {typeof todaysAlphaPoints === 'number' &&
-            Number.isFinite(todaysAlphaPoints) &&
-            todaysAlphaPoints >= pointsTargetValue && (
-              <Alert
-                message="积分目标已达成"
-                description={`当前积分 ${todaysAlphaPoints} ≥ 目标 ${pointsTargetValue}`}
-                type="success"
-                showIcon
-              />
-            )}
         </Space>
       </Card>
 
@@ -740,6 +716,63 @@ export function Popup(): React.ReactElement {
           </div>
         </Space>
       </Card>
+
+      <Space direction="vertical" size="small" style={{ width: '100%', marginBottom: 16 }}>
+        <Space size="small" style={{ width: '100%', justifyContent: 'center' }}>
+          <Button
+            type="primary"
+            icon={<PlayCircleOutlined />}
+            loading={controlsBusy}
+            disabled={controlsBusy || isEnabled || !canOperate}
+            onClick={() => void handleStart()}
+            size="large"
+          >
+            启动
+          </Button>
+          <Button
+            danger
+            icon={<PauseCircleOutlined />}
+            loading={controlsBusy}
+            disabled={controlsBusy || !isEnabled}
+            onClick={() => void handleStop()}
+            size="large"
+          >
+            停止
+          </Button>
+        </Space>
+
+        {!activeTab.isSupported && (
+          <Alert
+            message="需要打开 Binance Alpha 代币页面"
+            description={
+              <Link href={DEFAULT_BINANCE_ALPHA_URL} target="_blank" rel="noopener noreferrer">
+                点击此处打开
+              </Link>
+            }
+            type="warning"
+            showIcon
+          />
+        )}
+
+        {state?.lastError && (
+          <Alert message="错误" description={state.lastError} type="error" showIcon closable />
+        )}
+
+        {isEnabled && (
+          <Alert message={'自动化运行中'} type={isRunning ? 'success' : 'info'} showIcon />
+        )}
+
+        {typeof todaysAlphaPoints === 'number' &&
+          Number.isFinite(todaysAlphaPoints) &&
+          todaysAlphaPoints >= pointsTargetValue && (
+            <Alert
+              message="积分目标已达成"
+              description={`当前积分 ${todaysAlphaPoints} ≥ 目标 ${pointsTargetValue}`}
+              type="success"
+              showIcon
+            />
+          )}
+      </Space>
 
       {snapshot && (
         <Card

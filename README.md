@@ -1,4 +1,4 @@
-# Alpha 自动交易机器人
+# DDDD Alpha Extension
 
 一个用于在币安 Alpha 页面上自动监控 VWAP（成交量加权平均价格）并执行交易的 Chrome 扩展程序。
 
@@ -21,10 +21,10 @@
 ### 选项 1：使用预构建扩展（推荐）
 
 1. **下载扩展**：
-   - 从本仓库下载 `alpha-auto-bot-extension.zip`
+   - 从本仓库下载 `dddd-alpha-extension.zip`
 
 2. **解压 zip 文件**：
-   - 将 `alpha-auto-bot-extension.zip` 解压到你电脑上的一个文件夹
+   - 将 `dddd-alpha-extension.zip` 解压到你电脑上的一个文件夹
    - 你应该能看到 `manifest.json`、`popup.html` 和 `dist/` 文件夹等文件
 
 3. **在 Chrome 中加载**：
@@ -45,8 +45,8 @@
 
 ```bash
 # 克隆仓库
-git clone git@github.com:DDDDAO/alpha-auto-bot.git
-cd alpha-auto-bot
+git clone git@github.com:DDDDAO/dddd-alpha-extension.git
+cd dddd-alpha-extension
 
 # 安装依赖
 npm install
@@ -163,7 +163,7 @@ npm run lint
 ### 项目结构
 
 ```
-alpha-auto-bot/
+dddd-alpha-extension/
 ├── extension/              # 扩展清单和 UI
 │   ├── manifest.json      # Chrome 扩展清单
 │   ├── popup.html         # 弹窗 UI
@@ -254,7 +254,7 @@ MIT 许可证 - 可自由修改和分发
 
 ---
 
-# Alpha Auto Bot
+# DDDD Alpha Extension
 
 A Chrome extension for automating VWAP (Volume-Weighted Average Price) monitoring and trade execution on Binance Alpha pages.
 
@@ -277,10 +277,10 @@ A Chrome extension for automating VWAP (Volume-Weighted Average Price) monitorin
 ### Option 1: Use Pre-built Extension (Recommended)
 
 1. **Download the extension**:
-   - Download `alpha-auto-bot-extension.zip` from this repository
+   - Download `dddd-alpha-extension.zip` from this repository
 
 2. **Extract the zip file**:
-   - Unzip `alpha-auto-bot-extension.zip` to a folder on your computer
+   - Unzip `dddd-alpha-extension.zip` to a folder on your computer
    - You should see files like `manifest.json`, `popup.html`, and a `dist/` folder
 
 3. **Load in Chrome**:
@@ -301,8 +301,8 @@ If you want to modify the code or build from source:
 
 ```bash
 # Clone the repository
-git clone git@github.com:DDDDAO/alpha-auto-bot.git
-cd alpha-auto-bot
+git clone git@github.com:DDDDAO/dddd-alpha-extension.git
+cd dddd-alpha-extension
 
 # Install dependencies
 npm install
@@ -419,7 +419,7 @@ npm run lint
 ### Project Structure
 
 ```
-alpha-auto-bot/
+dddd-alpha-extension/
 ├── extension/              # Extension manifest and UI
 │   ├── manifest.json      # Chrome extension manifest
 │   ├── popup.html         # Popup UI

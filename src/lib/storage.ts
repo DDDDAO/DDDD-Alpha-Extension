@@ -43,7 +43,7 @@ export interface SchedulerState {
   settings: SchedulerSettings;
 }
 
-const STORAGE_KEY = 'alpha-auto-bot::state';
+const STORAGE_KEY = 'dddd-alpha-extension::state';
 const DEFAULT_SETTINGS: SchedulerSettings = {
   priceOffsetPercent: DEFAULT_PRICE_OFFSET_PERCENT,
   tokenAddress: DEFAULT_AUTOMATION.tokenAddress,

@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Alpha Auto Bot is a Chrome Manifest V3 extension that automates VWAP (Volume-Weighted Average Price) monitoring and trade execution on Binance Alpha pages. The extension uses a background service worker with alarms, content scripts for DOM interaction, and popup UI for control.
+DDDD Alpha Extension is a Chrome Manifest V3 extension that automates VWAP (Volume-Weighted Average Price) monitoring and trade execution on Binance Alpha pages. The extension uses a background service worker with alarms, content scripts for DOM interaction, and popup UI for control.
 
 ## Commands
 
@@ -107,7 +107,7 @@ Alpha Auto Bot is a Chrome Manifest V3 extension that automates VWAP (Volume-Wei
 - Permissions and delays configured in `extension/manifest.json`
 
 ## State Persistence
-- All scheduler state stored in Chrome local storage under key `alpha-auto-bot::state`
+- All scheduler state stored in Chrome local storage under key `dddd-alpha-extension::state`
 - Content script also reads storage to sync automation enabled flag and settings (priceOffsetPercent, pointsFactor)
 - Daily metrics reset at UTC day boundary (detected by comparing `date` field)
 - Storage listeners in both background and content scripts for real-time sync

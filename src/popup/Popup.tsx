@@ -484,9 +484,16 @@ export function Popup(): React.ReactElement {
               alt="Logo"
               style={{ width: '32px', height: '32px', display: 'block' }}
             />
-            <Title level={2} style={{ color: '#0DA2FF', margin: 0 }}>
+            <Title level={3} style={{ color: '#0DA2FF', margin: 0 }}>
               DDDD Alpha 辅助工具
             </Title>
+            <Link href="https://t.me/ddddao2025" target="_blank" rel="noopener noreferrer">
+              <img
+                src="/tg_logo.svg"
+                alt="Telegram"
+                style={{ width: '24px', height: '24px', display: 'block' }}
+              />
+            </Link>
           </div>
 
           <Card

@@ -1,5 +1,6 @@
 import {
   BarChartOutlined,
+  CheckCircleOutlined,
   ClockCircleOutlined,
   DollarOutlined,
   PauseCircleOutlined,
@@ -7,7 +8,7 @@ import {
   ThunderboltOutlined,
   TrophyOutlined,
 } from '@ant-design/icons';
-import { Alert, Button, Card, Col, InputNumber, Row, Space, Statistic, Typography } from 'antd';
+import { Alert, Button, Card, Col, InputNumber, Row, Space, Statistic, Typography, List, Tag } from 'antd';
 import React, { useCallback, useEffect, useId, useRef, useState } from 'react';
 import type { SchedulerState } from '../lib/storage';
 
@@ -22,6 +23,24 @@ const BINANCE_ALPHA_PATTERN =
   /^https:\/\/www\.binance\.com\/(?:[a-z]{2}(?:-[A-Z]{2})?\/)alpha\/bsc\/(0x[a-fA-F0-9]{40})(?:[/?#]|$)/u;
 const DEFAULT_BINANCE_ALPHA_URL =
   'https://www.binance.com/zh-CN/alpha/bsc/0xe6df05ce8c8301223373cf5b969afcb1498c5528';
+
+// 稳定性相关常量
+const STABILITY_FEED_URL = 'https://alpha123.uk/stability/stability_feed_v2.json';
+const STABILITY_UPDATE_INTERVAL = 30000; // 30秒更新一次
+const MAX_SPREAD_THRESHOLD = 2.0; // 价差基点阈值
+
+interface StabilityItem {
+  n: string; // 币种名称
+  p: number; // 价格
+  st: string; // 稳定性状态
+  md: number; // 4倍天数
+  spr: number; // 价差基点
+}
+
+interface StabilityFeed {
+  lastUpdated: number;
+  items: StabilityItem[];
+}
 
 interface ActiveTabContext {
   url: string | null;
@@ -46,6 +65,8 @@ export function Popup(): React.ReactElement {
   const [localPriceOffset, setLocalPriceOffset] = useState('0.01');
   const [localPointsFactor, setLocalPointsFactor] = useState('1');
   const [localPointsTarget, setLocalPointsTarget] = useState('15');
+  const [stableCoins, setStableCoins] = useState<StabilityItem[]>([]);
+  const [stabilityLoading, setStabilityLoading] = useState(false);
 
   const isEditingPriceOffset = useRef(false);
   const isEditingPointsFactor = useRef(false);
@@ -88,6 +109,35 @@ export function Popup(): React.ReactElement {
     },
     [],
   );
+
+  // 获取稳定币种数据
+  const fetchStableCoins = useCallback(async (): Promise<void> => {
+    try {
+      setStabilityLoading(true);
+      const response = await fetch(STABILITY_FEED_URL);
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      const data: StabilityFeed = await response.json();
+
+      // 筛选：稳定性为"stable"且价差基点小于阈值
+      const filtered = data.items
+        .filter(item => {
+          const isStable = item.st.includes('stable');
+          const isLowSpread = item.spr <= MAX_SPREAD_THRESHOLD;
+          return isStable && isLowSpread;
+        })
+        .sort((a, b) => a.spr - b.spr) // 按价差从小到大排序
+        .slice(0, 5); // 最多显示5个
+
+      setStableCoins(filtered);
+    } catch (error) {
+      console.error('获取稳定币种失败:', error);
+      setStableCoins([]);
+    } finally {
+      setStabilityLoading(false);
+    }
+  }, []);
 
   // Load initial state
   const loadState = useCallback(async (): Promise<void> => {
@@ -136,6 +186,7 @@ export function Popup(): React.ReactElement {
   useEffect(() => {
     void loadState();
     void refreshActiveTab();
+    void fetchStableCoins(); // 初始加载稳定币种
 
     // Listen for storage changes
     const handleStorageChange = (
@@ -155,11 +206,17 @@ export function Popup(): React.ReactElement {
       void refreshActiveTab();
     }, 1000);
 
+    // 定时更新稳定币种数据（30秒）
+    const stabilityInterval = setInterval(() => {
+      void fetchStableCoins();
+    }, STABILITY_UPDATE_INTERVAL);
+
     return () => {
       chrome.storage.onChanged.removeListener(handleStorageChange);
       clearInterval(interval);
+      clearInterval(stabilityInterval);
     };
-  }, [loadState, refreshActiveTab]);
+  }, [loadState, refreshActiveTab, fetchStableCoins]);
 
   // Sync local input values with state, but not during active editing
   useEffect(() => {
@@ -397,15 +454,60 @@ export function Popup(): React.ReactElement {
             </Title>
           </div>
 
-          <Button
-            type="default"
-            icon={<BarChartOutlined />}
-            onClick={handleOpenStability}
-            block
+          <Card
+            title={
+              <Space>
+                <CheckCircleOutlined style={{ color: '#52c41a' }} />
+                <span>推荐稳定币种</span>
+              </Space>
+            }
+            bordered={false}
+            size="small"
             style={{ marginBottom: 8 }}
+            extra={
+              <Button
+                type="link"
+                size="small"
+                icon={<BarChartOutlined />}
+                onClick={handleOpenStability}
+              >
+                详情
+              </Button>
+            }
           >
-            📊 稳定性看板
-          </Button>
+            {stabilityLoading ? (
+              <Text type="secondary" style={{ fontSize: 12 }}>加载中...</Text>
+            ) : stableCoins.length > 0 ? (
+              <List
+                size="small"
+                dataSource={stableCoins}
+                renderItem={(item) => (
+                  <List.Item style={{ padding: '4px 0', borderBottom: 'none' }}>
+                    <Space size="small" style={{ width: '100%', justifyContent: 'space-between' }}>
+                      <Space size="small">
+                        <Text strong style={{ fontSize: 13 }}>
+                          {item.n.replace('/USDT', '')}
+                        </Text>
+                        <Tag color="success" style={{ fontSize: 11, margin: 0 }}>
+                          稳定
+                        </Tag>
+                      </Space>
+                      <Space size="small">
+                        <Text type="secondary" style={{ fontSize: 11 }}>
+                          价差: {item.spr.toFixed(2)}
+                        </Text>
+                        <Text type="secondary" style={{ fontSize: 11 }}>
+                          天数: {item.md}
+                        </Text>
+                      </Space>
+                    </Space>
+                  </List.Item>
+                )}
+              />
+            ) : (
+              <Text type="secondary" style={{ fontSize: 12 }}>暂无推荐币种</Text>
+            )}
+          </Card>
 
           <Card title="当前代币" bordered={false} size="small" style={{ marginBottom: 8 }}>
             <Space direction="vertical" size="small" style={{ width: '100%' }}>

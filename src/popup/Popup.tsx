@@ -878,7 +878,11 @@ export function Popup(): React.ReactElement {
           <img
             src="/logo_with_name.svg"
             alt="DDDDAO"
-            style={{ height: '16px', display: 'block' }}
+            style={{
+              height: '16px',
+              display: 'inline-block',
+              verticalAlign: 'text-bottom',
+            }}
           />
         </Link>
       </div>

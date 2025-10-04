@@ -120,10 +120,11 @@ export function Popup(): React.ReactElement {
       }
       const data: StabilityFeed = await response.json();
 
-      // 筛选：稳定性为"stable"且价差基点小于阈值
+      // 筛选：只保留稳定性为"stable"的币种，完全移除"moderate"和"unstable"
       const filtered = data.items
         .filter(item => {
-          const isStable = item.st.includes('stable');
+          // 只保留稳定性为 "green:stable" 的币种
+          const isStable = item.st === 'green:stable';
           const isLowSpread = item.spr <= MAX_SPREAD_THRESHOLD;
           return isStable && isLowSpread;
         })

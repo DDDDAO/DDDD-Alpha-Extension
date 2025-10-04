@@ -8,6 +8,17 @@ const LIMIT_STATE_POLL_INTERVAL_MS = 100;
 const STORAGE_KEY = 'alpha-auto-bot::state';
 const MIN_PRICE_OFFSET_PERCENT = 0;
 const MAX_PRICE_OFFSET_PERCENT = 5;
+function getPageLocale() {
+    const href = window.location.href;
+    if (href.includes('/zh-CN/')) {
+        // eslint-disable-next-line no-console
+        console.log('[alpha-auto-bot] Detected locale: zh-CN');
+        return 'zh-CN';
+    }
+    // eslint-disable-next-line no-console
+    console.log('[alpha-auto-bot] Detected locale: en (default)');
+    return 'en';
+}
 let pollingTimerId;
 let evaluationInProgress = false;
 let loginErrorDispatched = false;
@@ -18,9 +29,13 @@ let automationStateWatcherInitialized = false;
 let priceOffsetPercent = DEFAULT_PRICE_OFFSET_PERCENT;
 let pointsFactor = DEFAULT_POINTS_FACTOR;
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+    // eslint-disable-next-line no-console
+    console.log('[alpha-auto-bot] Received message:', message.type);
     if (message.type === 'RUN_TASK') {
         void handleAutomation().catch((error) => {
             const messageText = error instanceof Error ? error.message : String(error);
+            // eslint-disable-next-line no-console
+            console.error('[alpha-auto-bot] RUN_TASK error:', messageText);
             void postRuntimeMessage({
                 type: 'TASK_ERROR',
                 payload: { message: messageText },
@@ -30,8 +45,12 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
         return true;
     }
     if (message.type === 'RUN_TASK_ONCE') {
+        // eslint-disable-next-line no-console
+        console.log('[alpha-auto-bot] Starting manual run');
         void handleManualRun().catch((error) => {
             const messageText = error instanceof Error ? error.message : String(error);
+            // eslint-disable-next-line no-console
+            console.error('[alpha-auto-bot] RUN_TASK_ONCE error:', messageText);
             void postRuntimeMessage({
                 type: 'TASK_ERROR',
                 payload: { message: messageText },
@@ -42,6 +61,8 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     }
     if (message.type === 'REQUEST_TOKEN_SYMBOL') {
         const tokenSymbol = extractTokenSymbol();
+        // eslint-disable-next-line no-console
+        console.log('[alpha-auto-bot] Token symbol requested:', tokenSymbol);
         sendResponse({
             acknowledged: Boolean(tokenSymbol),
             tokenSymbol: tokenSymbol ?? null,
@@ -57,6 +78,8 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
                 balanceValue = extracted;
             }
         }
+        // eslint-disable-next-line no-console
+        console.log('[alpha-auto-bot] Current balance requested:', balanceValue);
         sendResponse({
             acknowledged: balanceValue !== null,
             currentBalance: balanceValue ?? null,
@@ -89,8 +112,12 @@ async function sendInitialBalanceUpdate() {
     }
 }
 async function handleAutomation() {
+    // eslint-disable-next-line no-console
+    console.log('[alpha-auto-bot] handleAutomation started, automationEnabled:', automationEnabled);
     const needsLogin = checkForLoginPrompt();
     if (needsLogin) {
+        // eslint-disable-next-line no-console
+        console.warn('[alpha-auto-bot] Login required detected');
         await dispatchRuntimeMessage({
             type: 'TASK_ERROR',
             payload: { message: 'Login required. Please authenticate manually.' },
@@ -100,6 +127,8 @@ async function handleAutomation() {
     }
     loginErrorDispatched = false;
     if (!automationEnabled) {
+        // eslint-disable-next-line no-console
+        console.log('[alpha-auto-bot] Automation disabled, tearing down polling');
         teardownPolling();
         return;
     }
@@ -124,14 +153,20 @@ function checkForLoginPrompt() {
 }
 async function ensurePolling() {
     if (!isExtensionContextValid()) {
+        // eslint-disable-next-line no-console
+        console.warn('[alpha-auto-bot] Extension context invalid, tearing down');
         teardownPolling();
         return;
     }
     if (!automationEnabled) {
+        // eslint-disable-next-line no-console
+        console.log('[alpha-auto-bot] Automation not enabled, tearing down');
         teardownPolling();
         return;
     }
     if (pollingTimerId === undefined) {
+        // eslint-disable-next-line no-console
+        console.log('[alpha-auto-bot] Starting polling with interval:', POLLING_INTERVAL_MS, 'ms');
         pollingTimerId = window.setInterval(() => {
             void runEvaluationCycle(true, { placeOrder: true });
         }, POLLING_INTERVAL_MS);
@@ -140,21 +175,31 @@ async function ensurePolling() {
 }
 async function runEvaluationCycle(requireAutomationEnabled = true, options = {}) {
     if (!isExtensionContextValid()) {
+        // eslint-disable-next-line no-console
+        console.warn('[alpha-auto-bot] Extension context invalid in evaluation cycle');
         teardownPolling();
         return;
     }
     if (evaluationInProgress) {
+        // eslint-disable-next-line no-console
+        console.log('[alpha-auto-bot] Evaluation already in progress, skipping');
         return;
     }
     evaluationInProgress = true;
+    // eslint-disable-next-line no-console
+    console.log('[alpha-auto-bot] Starting evaluation cycle, placeOrder:', options.placeOrder !== false);
     try {
         const placeOrder = options.placeOrder !== false;
         if (requireAutomationEnabled && !automationEnabled) {
+            // eslint-disable-next-line no-console
+            console.log('[alpha-auto-bot] Automation disabled during evaluation, tearing down');
             teardownPolling();
             return;
         }
         if (checkForLoginPrompt()) {
             if (!loginErrorDispatched) {
+                // eslint-disable-next-line no-console
+                console.warn('[alpha-auto-bot] Login prompt detected during evaluation');
                 await dispatchRuntimeMessage({
                     type: 'TASK_ERROR',
                     payload: { message: 'Login required. Please authenticate manually.' },
@@ -165,6 +210,8 @@ async function runEvaluationCycle(requireAutomationEnabled = true, options = {})
         }
         loginErrorDispatched = false;
         const result = await executePrimaryTask({ placeOrder });
+        // eslint-disable-next-line no-console
+        console.log('[alpha-auto-bot] Task completed:', result.success, result.details);
         await dispatchRuntimeMessage({
             type: 'TASK_COMPLETE',
             payload: result,
@@ -172,6 +219,8 @@ async function runEvaluationCycle(requireAutomationEnabled = true, options = {})
     }
     catch (error) {
         const messageText = error instanceof Error ? error.message : String(error);
+        // eslint-disable-next-line no-console
+        console.error('[alpha-auto-bot] Evaluation cycle error:', messageText);
         await dispatchRuntimeMessage({
             type: 'TASK_ERROR',
             payload: { message: messageText },
@@ -182,22 +231,34 @@ async function runEvaluationCycle(requireAutomationEnabled = true, options = {})
     }
 }
 async function executePrimaryTask(options = {}) {
+    // eslint-disable-next-line no-console
+    console.log('[alpha-auto-bot] executePrimaryTask started');
     const panel = findTradeHistoryPanel();
     if (!panel) {
+        // eslint-disable-next-line no-console
+        console.error('[alpha-auto-bot] Trade history panel not found');
         return {
             success: false,
             details: 'Unable to locate limit trade history panel.',
         };
     }
     const trades = extractTradeHistorySamples(panel);
+    // eslint-disable-next-line no-console
+    console.log('[alpha-auto-bot] Extracted trades:', trades.length);
     if (!trades.length) {
         return { success: false, details: 'No limit trade entries detected.' };
     }
     const tokenSymbol = extractTokenSymbol();
+    // eslint-disable-next-line no-console
+    console.log('[alpha-auto-bot] Token symbol:', tokenSymbol);
     const averagePrice = calculateVolumeWeightedAverage(trades);
     if (averagePrice === null) {
+        // eslint-disable-next-line no-console
+        console.error('[alpha-auto-bot] Failed to calculate VWAP');
         return { success: false, details: 'Failed to compute average price.' };
     }
+    // eslint-disable-next-line no-console
+    console.log('[alpha-auto-bot] Calculated VWAP:', averagePrice);
     const tradeCount = trades.length;
     const precision = averagePrice < 1 ? 8 : 6;
     const formattedAverage = averagePrice.toFixed(precision);
@@ -208,14 +269,20 @@ async function executePrimaryTask(options = {}) {
     let successfulTradesDelta;
     let currentBalanceSnapshot;
     if (shouldPlaceOrder) {
+        // eslint-disable-next-line no-console
+        console.log('[alpha-auto-bot] Attempting to place order, priceOffsetPercent:', priceOffsetPercent);
         try {
             orderResult = await ensureLimitOrderPlaced({
                 price: averagePrice,
                 priceOffsetPercent,
             });
+            // eslint-disable-next-line no-console
+            console.log('[alpha-auto-bot] Order result:', orderResult.status, orderResult.reason);
         }
         catch (error) {
             const message = error instanceof Error ? error.message : String(error);
+            // eslint-disable-next-line no-console
+            console.error('[alpha-auto-bot] Order placement error:', message);
             return { success: false, details: `Order placement failed: ${message}` };
         }
         if (orderResult) {
@@ -399,12 +466,18 @@ function calculateVolumeWeightedAverage(trades) {
     return weightedSum / volumeSum;
 }
 async function ensureLimitOrderPlaced(params) {
+    // eslint-disable-next-line no-console
+    console.log('[alpha-auto-bot] ensureLimitOrderPlaced started');
     const openOrdersRoot = getOpenOrdersRoot();
     if (!openOrdersRoot) {
+        // eslint-disable-next-line no-console
+        console.error('[alpha-auto-bot] Open orders root not found');
         throw new Error('Open orders section unavailable.');
     }
     await ensureOpenOrdersTabs(openOrdersRoot);
     const orderState = await resolveLimitOrderState(openOrdersRoot);
+    // eslint-disable-next-line no-console
+    console.log('[alpha-auto-bot] Order state:', orderState);
     if (orderState === 'non-empty') {
         return {
             status: 'skipped',
@@ -415,7 +488,10 @@ async function ensureLimitOrderPlaced(params) {
         return { status: 'skipped', reason: 'Unable to verify limit order state.' };
     }
     const now = Date.now();
-    if (now - lastOrderPlacedAt < ORDER_PLACEMENT_COOLDOWN_MS) {
+    const timeSinceLastOrder = now - lastOrderPlacedAt;
+    // eslint-disable-next-line no-console
+    console.log('[alpha-auto-bot] Time since last order:', timeSinceLastOrder, 'ms');
+    if (timeSinceLastOrder < ORDER_PLACEMENT_COOLDOWN_MS) {
         return {
             status: 'cooldown',
             reason: 'Waiting for previous order placement to settle.',
@@ -423,9 +499,13 @@ async function ensureLimitOrderPlaced(params) {
     }
     const orderPanel = getTradingFormPanel();
     if (!orderPanel) {
+        // eslint-disable-next-line no-console
+        console.error('[alpha-auto-bot] Trading form panel not found');
         throw new Error('Trading form panel not found.');
     }
     const availableUsdt = extractAvailableUsdt(orderPanel);
+    // eslint-disable-next-line no-console
+    console.log('[alpha-auto-bot] Available USDT:', availableUsdt);
     if (availableUsdt === null) {
         throw new Error('Unable to determine available USDT balance.');
     }
@@ -446,12 +526,15 @@ async function ensureLimitOrderPlaced(params) {
     };
 }
 async function ensureOpenOrdersTabs(root) {
-    const openOrdersTab = getTabByLabel(root, 'Open Orders');
+    const locale = getPageLocale();
+    const openOrdersLabel = locale === 'zh-CN' ? '当前委托' : 'Open Orders';
+    const limitLabel = locale === 'zh-CN' ? '限价' : 'Limit';
+    const openOrdersTab = getTabByLabel(root, openOrdersLabel);
     if (openOrdersTab && openOrdersTab.getAttribute('aria-selected') !== 'true') {
         openOrdersTab.click();
         await waitForAnimationFrame();
     }
-    const limitTab = getTabByLabel(root, 'Limit');
+    const limitTab = getTabByLabel(root, limitLabel);
     if (limitTab && limitTab.getAttribute('aria-selected') !== 'true') {
         limitTab.click();
         await waitForAnimationFrame();
@@ -482,18 +565,24 @@ async function resolveLimitOrderState(root) {
 function detectLimitOrderState(root) {
     const container = getLimitOrdersContainer(root);
     if (!container) {
+        console.log('[alpha-auto-bot] Limit orders container not found');
         return 'unknown';
     }
-    const emptyNode = findElementWithExactText(container, 'No Ongoing Orders');
+    const locale = getPageLocale();
+    const emptyLabel = locale === 'zh-CN' ? '无进行中的订单' : 'No Ongoing Orders';
+    const emptyNode = findElementWithExactText(container, emptyLabel);
     if (emptyNode) {
+        console.log('[alpha-auto-bot] Limit orders container found empty');
         return 'empty';
     }
     const rowCandidates = container.querySelectorAll('[data-row-index],[role="row"],table tbody tr');
     for (const candidate of Array.from(rowCandidates)) {
         if (candidate.textContent && candidate.textContent.trim().length > 0) {
+            console.log('[alpha-auto-bot] Limit orders container found non-empty');
             return 'non-empty';
         }
     }
+    console.log('[alpha-auto-bot] Limit orders container unknown');
     return 'unknown';
 }
 function getLimitOrdersContainer(root) {
@@ -518,6 +607,8 @@ function getTradingFormPanel() {
 }
 function teardownPolling() {
     if (pollingTimerId !== undefined) {
+        // eslint-disable-next-line no-console
+        console.log('[alpha-auto-bot] Tearing down polling');
         clearInterval(pollingTimerId);
         pollingTimerId = undefined;
     }
@@ -556,6 +647,17 @@ function applyAutomationState(value) {
             const factorCandidate = record.settings.pointsFactor;
             nextPointsFactor = extractPointsFactor(factorCandidate);
         }
+    }
+    const stateChanged = automationEnabled !== nextEnabled ||
+        priceOffsetPercent !== nextPriceOffset ||
+        pointsFactor !== nextPointsFactor;
+    if (stateChanged) {
+        // eslint-disable-next-line no-console
+        console.log('[alpha-auto-bot] Automation state updated:', {
+            enabled: nextEnabled,
+            priceOffsetPercent: nextPriceOffset,
+            pointsFactor: nextPointsFactor,
+        });
     }
     automationEnabled = nextEnabled;
     priceOffsetPercent = nextPriceOffset;
@@ -638,45 +740,75 @@ async function configureLimitOrder(params) {
     const reversePrice = reversePriceBase > 0 ? reversePriceBase : 0;
     const buyPriceValue = formatNumberFixedDecimals(buyPrice, 8);
     const reversePriceValue = formatNumberFixedDecimals(reversePrice, 8);
+    // eslint-disable-next-line no-console
+    console.log('[alpha-auto-bot] Configuring order:', {
+        basePrice: price,
+        offsetPercent: clampedOffsetPercent,
+        buyPrice: buyPriceValue,
+        reversePrice: reversePriceValue,
+        availableUsdt,
+    });
     const priceInput = orderPanel.querySelector('#limitPrice');
     if (!priceInput) {
+        // eslint-disable-next-line no-console
+        console.error('[alpha-auto-bot] Limit price input not found');
         throw new Error('Limit price input not found.');
     }
+    // eslint-disable-next-line no-console
+    console.log('[alpha-auto-bot] Setting buy price:', buyPriceValue);
     await waitRandomDelay();
     setReactInputValue(priceInput, buyPriceValue);
     await waitForAnimationFrame();
     const toggleChanged = ensureReverseOrderToggle(orderPanel);
+    // eslint-disable-next-line no-console
+    console.log('[alpha-auto-bot] Reverse order toggle changed:', toggleChanged);
     if (toggleChanged) {
         await waitForAnimationFrame();
     }
     await waitRandomDelay();
     const slider = orderPanel.querySelector('input.bn-slider');
     if (!slider) {
+        // eslint-disable-next-line no-console
+        console.error('[alpha-auto-bot] Order amount slider not found');
         throw new Error('Order amount slider not found.');
     }
+    // eslint-disable-next-line no-console
+    console.log('[alpha-auto-bot] Setting slider to 100%');
     slider.focus();
     slider.value = '100';
     slider.dispatchEvent(new Event('input', { bubbles: true }));
     slider.dispatchEvent(new Event('change', { bubbles: true }));
     await waitForAnimationFrame();
     await waitRandomDelay();
-    const reversePriceInput = orderPanel.querySelector('#limitTotal[placeholder="Limit Sell"]');
+    const locale = getPageLocale();
+    const reversePricePlaceholder = locale === 'zh-CN' ? '限价卖出' : 'Limit Sell';
+    const reversePriceInput = orderPanel.querySelector(`#limitTotal[placeholder="${reversePricePlaceholder}"]`);
     if (!reversePriceInput) {
+        // eslint-disable-next-line no-console
+        console.error('[alpha-auto-bot] Reverse order price input not found');
         throw new Error('Reverse order price input not found.');
     }
+    // eslint-disable-next-line no-console
+    console.log('[alpha-auto-bot] Setting reverse price:', reversePriceValue);
     setReactInputValue(reversePriceInput, reversePriceValue);
     await waitForAnimationFrame();
     await waitRandomDelay();
     const buyButton = orderPanel.querySelector('button.bn-button__buy');
     if (!buyButton) {
+        // eslint-disable-next-line no-console
+        console.error('[alpha-auto-bot] Buy button not found');
         throw new Error('Buy button not found.');
     }
+    // eslint-disable-next-line no-console
+    console.log('[alpha-auto-bot] Clicking buy button');
     buyButton.click();
     scheduleOrderConfirmationClick();
     return availableUsdt;
 }
 function ensureReverseOrderToggle(orderPanel) {
-    const label = findElementWithExactText(orderPanel, 'Reverse Order');
+    const locale = getPageLocale();
+    const labelText = locale === 'zh-CN' ? '反向订单' : 'Reverse Order';
+    const label = findElementWithExactText(orderPanel, labelText);
     if (!label) {
         throw new Error('Reverse order toggle not found.');
     }
@@ -701,16 +833,26 @@ function scheduleOrderConfirmationClick() {
     const ATTEMPT_DURATION_MS = 2_000;
     const ATTEMPT_INTERVAL_MS = 100;
     const INITIAL_DELAY_MS = randomIntInRange(300, 800);
+    // eslint-disable-next-line no-console
+    console.log('[alpha-auto-bot] Scheduling confirmation click with delay:', INITIAL_DELAY_MS, 'ms');
     const runAttempts = () => {
         const start = Date.now();
+        let attemptCount = 0;
         const attempt = () => {
+            attemptCount++;
             const confirmButton = findOrderConfirmationButton();
             if (confirmButton) {
+                // eslint-disable-next-line no-console
+                console.log('[alpha-auto-bot] Confirm button found after', attemptCount, 'attempts, clicking');
                 confirmButton.click();
                 return;
             }
             if (Date.now() - start < ATTEMPT_DURATION_MS) {
                 window.setTimeout(attempt, ATTEMPT_INTERVAL_MS);
+            }
+            else {
+                // eslint-disable-next-line no-console
+                console.warn('[alpha-auto-bot] Confirm button not found after', attemptCount, 'attempts');
             }
         };
         attempt();
@@ -728,7 +870,9 @@ function findOrderConfirmationButton() {
     }
     for (const candidate of candidates) {
         const text = candidate.textContent?.trim().toLowerCase();
-        if (text === 'confirm') {
+        const locale = getPageLocale();
+        const confirmLabel = locale === 'zh-CN' ? '确认' : 'Confirm';
+        if (text === confirmLabel) {
             return candidate;
         }
     }
@@ -758,9 +902,9 @@ function formatNumberFixedDecimals(value, fractionDigits) {
     return value.toFixed(fractionDigits);
 }
 function extractAvailableUsdt(orderPanel) {
-    const labelEnglish = findElementWithExactText(orderPanel, 'Available');
-    const labelChinese = findElementWithExactText(orderPanel, '可用');
-    const label = labelEnglish ?? labelChinese;
+    const locale = getPageLocale();
+    const labelText = locale === 'zh-CN' ? '可用' : 'Available';
+    const label = findElementWithExactText(orderPanel, labelText);
     if (!label) {
         return null;
     }

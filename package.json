@@ -1,5 +1,5 @@
 {
-  "name": "alpha-auto-bot",
+  "name": "dddd-alpha-extension",
   "version": "0.1.0",
   "private": true,
   "scripts": {
@@ -12,7 +12,7 @@
     "lint": "biome lint .",
     "format": "biome format --write .",
     "check": "biome check --write .",
-    "zip": "cd extension && zip -r ../alpha-auto-bot-extension.zip . -x '*.DS_Store' && cd ..",
+    "zip": "cd extension && zip -r ../dddd-alpha-extension.zip . -x '*.DS_Store' && cd ..",
     "prepush": "npm run build && npm run zip"
   },
   "devDependencies": {

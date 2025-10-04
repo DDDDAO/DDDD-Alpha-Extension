@@ -26,10 +26,10 @@ function parseStability(st) {
  * 评分规则：
  * - 稳定性：稳定=50分，不稳定=0分
  * - 价差：越低越好 (0-50分)
- * - 4倍天数：5-15天最佳 (0-50分)
+ * 总分范围：0-100分
  */
 function calculateScore(item) {
-    const { st, spr, md } = item;
+    const { st, spr } = item;
     // 稳定性评分 (0-50)
     let stabilityScore = 0;
     if (st.includes('stable'))
@@ -38,24 +38,13 @@ function calculateScore(item) {
         stabilityScore = 0;
     // 价差评分 (0-50): 价差越小越好
     const spreadScore = Math.max(0, 50 - spr * 10);
-    // 4倍天数评分 (0-50): 5-15天为最佳
-    let daysScore = 0;
-    if (md >= 5 && md <= 15) {
-        daysScore = 50;
-    }
-    else if (md < 5) {
-        daysScore = md * 10;
-    }
-    else {
-        daysScore = Math.max(0, 50 - (md - 15) * 3);
-    }
-    return stabilityScore + spreadScore + daysScore;
+    return stabilityScore + spreadScore;
 }
 /**
  * 生成推荐理由
  */
 function getReason(score) {
-    if (score >= 100)
+    if (score >= 95)
         return '✨ 稳定性优秀，价差极低，适合稳定套利';
     if (score >= 75)
         return '👍 稳定性良好，价差合理';

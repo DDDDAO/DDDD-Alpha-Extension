@@ -492,6 +492,11 @@ export function Popup(): React.ReactElement {
                         <Tag color="success" style={{ fontSize: 11, margin: 0 }}>
                           稳定
                         </Tag>
+                        {item.md > 0 && (
+                          <Tag color="blue" style={{ fontSize: 11, margin: 0 }}>
+                            4倍
+                          </Tag>
+                        )}
                       </Space>
                       <Space size="small">
                         <Text type="secondary" style={{ fontSize: 11 }}>

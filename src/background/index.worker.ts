@@ -10,6 +10,30 @@ const { alarmName, intervalMinutes } = DEFAULT_AUTOMATION;
 const MIN_ALARM_INTERVAL_MINUTES = 0.5;
 const INITIAL_DELAY_MINUTES = 0.01;
 
+class AutomationMessageError extends Error {
+  constructor(
+    message: string,
+    readonly code: string,
+  ) {
+    super(message);
+    this.name = 'AutomationMessageError';
+  }
+}
+
+class ContentScriptUnavailableError extends AutomationMessageError {
+  constructor(message = 'Content script unavailable') {
+    super(message, 'CONTENT_SCRIPT_UNAVAILABLE');
+    this.name = 'ContentScriptUnavailableError';
+  }
+}
+
+class TabUnavailableError extends AutomationMessageError {
+  constructor(message = 'Tab unavailable') {
+    super(message, 'TAB_UNAVAILABLE');
+    this.name = 'TabUnavailableError';
+  }
+}
+
 let immediateRunScheduled = false;
 
 void bootstrapScheduler();
@@ -364,7 +388,16 @@ async function runAutomationCycle(options: RunOptions = {}): Promise<void> {
       trigger === 'manual' ? { type: 'RUN_TASK_ONCE' } : { type: 'RUN_TASK' };
     await sendMessageToTab(tab.id, runtimeMessage);
   } catch (error) {
-    const message = normalizeError(error);
+    let message: string;
+
+    if (error instanceof ContentScriptUnavailableError) {
+      message = '未能连接到 Binance Alpha 页面，请确认页面已完全加载或刷新页面后重试。';
+    } else if (error instanceof TabUnavailableError) {
+      message = '目标页面已关闭或跳转，请重新打开对应的 Binance Alpha 页面后重试。';
+    } else {
+      message = normalizeError(error);
+    }
+
     await updateSchedulerState((state) => ({
       ...state,
       isRunning: false,
@@ -459,6 +492,8 @@ function sanitizeTabId(value?: number): number | undefined {
 }
 
 const MAX_MESSAGE_ATTEMPTS = 12;
+const RECEIVING_END_MISSING_PATTERN = /Receiving end does not exist/i;
+const TAB_UNAVAILABLE_PATTERN = /(No tab with id|The tab was closed|Tab .* not found)/i;
 
 async function sendMessageToTab(
   tabId: number,
@@ -484,8 +519,9 @@ async function sendMessageToTab(
     });
   } catch (error) {
     const messageText = normalizeError(error);
-    const canRetry =
-      attempt < MAX_MESSAGE_ATTEMPTS && /Receiving end does not exist/i.test(messageText);
+    const receivingEndMissing = RECEIVING_END_MISSING_PATTERN.test(messageText);
+    const tabMissing = TAB_UNAVAILABLE_PATTERN.test(messageText);
+    const canRetry = attempt < MAX_MESSAGE_ATTEMPTS && receivingEndMissing;
 
     if (canRetry) {
       await delay(250 * attempt + 250);
@@ -493,7 +529,15 @@ async function sendMessageToTab(
       return;
     }
 
-    throw new Error(messageText);
+    if (receivingEndMissing) {
+      throw new ContentScriptUnavailableError(messageText);
+    }
+
+    if (tabMissing) {
+      throw new TabUnavailableError(messageText);
+    }
+
+    throw new AutomationMessageError(messageText, 'MESSAGE_FAILED');
   }
 }
 

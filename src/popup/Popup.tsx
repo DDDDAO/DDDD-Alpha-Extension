@@ -861,13 +861,24 @@ export function Popup(): React.ReactElement {
         </Card>
       )}
 
-      <div style={{ textAlign: 'center', padding: '16px 0 8px', color: '#8c8c8c', fontSize: 12 }}>
-        Made with ❤️ by{' '}
+      <div
+        style={{
+          textAlign: 'center',
+          padding: '16px 0 8px',
+          color: '#8c8c8c',
+          fontSize: 12,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: '4px',
+        }}
+      >
+        <span>Made with ❤️ by</span>
         <Link href="https://t.me/ddddao2025" target="_blank" rel="noopener noreferrer">
           <img
             src="/logo_with_name.svg"
             alt="DDDDAO"
-            style={{ height: '16px', verticalAlign: 'middle' }}
+            style={{ height: '16px', display: 'block' }}
           />
         </Link>
       </div>

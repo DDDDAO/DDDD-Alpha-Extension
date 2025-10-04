@@ -11,7 +11,9 @@
     "test": "vitest",
     "lint": "biome lint .",
     "format": "biome format --write .",
-    "check": "biome check --write ."
+    "check": "biome check --write .",
+    "zip": "cd extension && zip -r ../alpha-auto-bot-extension.zip . -x '*.DS_Store' && cd ..",
+    "prepush": "npm run build && npm run zip"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.2.5",

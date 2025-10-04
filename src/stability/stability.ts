@@ -35,11 +35,11 @@ function parseStability(st: string): { color: string; label: string } {
   const labels: Record<string, string> = {
     stable: '稳定',
     moderate: '一般',
-    unstable: '不稳'
+    unstable: '不稳',
   };
   return {
     color,
-    label: labels[status] || status
+    label: labels[status] || status,
   };
 }
 
@@ -125,14 +125,14 @@ async function fetchStabilityData(): Promise<StabilityFeed | null> {
  */
 function processData(data: StabilityFeed): StabilityRecommendation[] {
   return data.items
-    .map(item => {
+    .map((item) => {
       const score = calculateScore(item);
       const { label } = parseStability(item.st);
       return {
         ...item,
         score,
         label,
-        reason: getReason(score)
+        reason: getReason(score),
       };
     })
     .sort((a, b) => b.score - a.score);
@@ -177,7 +177,7 @@ function renderRecommendations(items: StabilityRecommendation[]): void {
         <div class="card-reason">${item.reason}</div>
       </div>
     </div>
-  `
+  `,
     )
     .join('');
 }
@@ -205,7 +205,7 @@ function renderTable(items: StabilityRecommendation[]): void {
       <td>${item.md}</td>
       <td><strong>${item.score.toFixed(0)}</strong></td>
     </tr>
-  `
+  `,
     )
     .join('');
 }

@@ -5,14 +5,25 @@ import {
   DollarOutlined,
   PauseCircleOutlined,
   PlayCircleOutlined,
-  ThunderboltOutlined,
   TrophyOutlined,
 } from '@ant-design/icons';
-import { Alert, Button, Card, Col, InputNumber, Row, Space, Statistic, Typography, List, Tag } from 'antd';
+import {
+  Alert,
+  Button,
+  Card,
+  Col,
+  InputNumber,
+  List,
+  Row,
+  Space,
+  Statistic,
+  Tag,
+  Typography,
+} from 'antd';
 import React, { useCallback, useEffect, useId, useRef, useState } from 'react';
 import type { SchedulerState } from '../lib/storage';
 
-const { Title, Text, Link } = Typography;
+const { Text, Link, Title } = Typography;
 
 const STORAGE_KEY = 'alpha-auto-bot::state';
 const DEFAULT_PRICE_OFFSET_PERCENT = 0.01;
@@ -31,11 +42,11 @@ const MAX_SPREAD_THRESHOLD = 2.0; // 价差基点阈值
 
 // 币种地址映射
 const COIN_ADDRESSES: Record<string, string> = {
-  'AOP': '0xd5df4d260d7a0145f655bcbf3b398076f21016c7',
-  'ALEO': '0x6cfffa5bfd4277a04d83307feedfe2d18d944dd2',
-  'NUMI': '0xc61eb549acf4a05ed6e3fe0966f5e213b23541ce',
-  'ZEUS': '0xa2be3e48170a60119b5f0400c65f65f3158fbeee',
-  'KOGE': '0xe6df05ce8c8301223373cf5b969afcb1498c5528',
+  AOP: '0xd5df4d260d7a0145f655bcbf3b398076f21016c7',
+  ALEO: '0x6cfffa5bfd4277a04d83307feedfe2d18d944dd2',
+  NUMI: '0xc61eb549acf4a05ed6e3fe0966f5e213b23541ce',
+  ZEUS: '0xa2be3e48170a60119b5f0400c65f65f3158fbeee',
+  KOGE: '0xe6df05ce8c8301223373cf5b969afcb1498c5528',
 };
 
 interface StabilityItem {
@@ -131,7 +142,7 @@ export function Popup(): React.ReactElement {
 
       // 筛选：只保留稳定性为"stable"的币种，完全移除"moderate"和"unstable"
       const filtered = data.items
-        .filter(item => {
+        .filter((item) => {
           // 只保留稳定性为 "green:stable" 的币种
           const isStable = item.st === 'green:stable';
           const isLowSpread = item.spr <= MAX_SPREAD_THRESHOLD;
@@ -458,9 +469,23 @@ export function Popup(): React.ReactElement {
     <div style={{ width: 420, padding: 16, background: '#f5f5f5', minHeight: 600 }}>
       <Card bordered={false} style={{ marginBottom: 16 }}>
         <Space direction="vertical" size="middle" style={{ width: '100%' }}>
-          <div style={{ textAlign: 'center' }}>
-            <Title level={3} style={{ margin: 0 }}>
-              <ThunderboltOutlined style={{ color: '#1890ff' }} /> Alpha 自动交易
+          <div
+            style={{
+              textAlign: 'center',
+              marginBottom: 8,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '12px',
+            }}
+          >
+            <img
+              src="/logo.svg"
+              alt="Logo"
+              style={{ width: '32px', height: '32px', display: 'block' }}
+            />
+            <Title level={2} style={{ color: '#0DA2FF', margin: 0 }}>
+              DDDD Alpha 辅助工具
             </Title>
           </div>
 
@@ -486,7 +511,9 @@ export function Popup(): React.ReactElement {
             }
           >
             {stabilityLoading ? (
-              <Text type="secondary" style={{ fontSize: 12 }}>加载中...</Text>
+              <Text type="secondary" style={{ fontSize: 12 }}>
+                加载中...
+              </Text>
             ) : stableCoins.length > 0 ? (
               <List
                 size="small"
@@ -511,10 +538,14 @@ export function Popup(): React.ReactElement {
                                 color: '#1890ff',
                                 fontSize: 13,
                                 fontWeight: 600,
-                                textDecoration: 'none'
+                                textDecoration: 'none',
                               }}
-                              onMouseEnter={(e) => e.currentTarget.style.textDecoration = 'underline'}
-                              onMouseLeave={(e) => e.currentTarget.style.textDecoration = 'none'}
+                              onMouseEnter={(e) => {
+                                e.currentTarget.style.textDecoration = 'underline';
+                              }}
+                              onMouseLeave={(e) => {
+                                e.currentTarget.style.textDecoration = 'none';
+                              }}
                             >
                               {coinSymbol}
                             </a>
@@ -546,15 +577,19 @@ export function Popup(): React.ReactElement {
                 )}
               />
             ) : (
-              <Text type="secondary" style={{ fontSize: 12 }}>暂无推荐币种</Text>
+              <Text type="secondary" style={{ fontSize: 12 }}>
+                暂无推荐币种
+              </Text>
             )}
           </Card>
 
           <Card title="当前代币" bordered={false} size="small" style={{ marginBottom: 8 }}>
             <Space direction="vertical" size="small" style={{ width: '100%' }}>
-              <Text strong style={{ fontSize: 16 }}>
-                {resolvedSymbol || '—'}
-              </Text>
+              <div>
+                <Text strong style={{ fontSize: 16 }}>
+                  {resolvedSymbol || '—'}
+                </Text>
+              </div>
               <Text type="secondary" style={{ fontSize: 12, wordBreak: 'break-all' }}>
                 {activeTab.tokenAddress || '未选择代币'}
               </Text>
@@ -794,9 +829,41 @@ export function Popup(): React.ReactElement {
                 </Text>
               </div>
             </Col>
+            <Col span={24}>
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  marginTop: '8px',
+                }}
+              >
+                <Text type="secondary" style={{ fontSize: 12 }}>
+                  加入电报社区一起讨论Alpha刷分心得:
+                </Text>
+                <Link href="https://t.me/ddddao2025" target="_blank" rel="noopener noreferrer">
+                  <img
+                    src="/tg_logo.svg"
+                    alt="Telegram"
+                    style={{ width: '20px', height: '20px', display: 'inline-block' }}
+                  />
+                </Link>
+              </div>
+            </Col>
           </Row>
         </Card>
       )}
+
+      <div style={{ textAlign: 'center', padding: '16px 0 8px', color: '#8c8c8c', fontSize: 12 }}>
+        Made with ❤️ by{' '}
+        <Link href="https://t.me/ddddao2025" target="_blank" rel="noopener noreferrer">
+          <img
+            src="/logo_with_name.svg"
+            alt="DDDDAO"
+            style={{ height: '16px', verticalAlign: 'middle' }}
+          />
+        </Link>
+      </div>
     </div>
   );
 }

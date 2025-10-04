@@ -47,13 +47,6 @@ export type RuntimeMessage =
     }
   | {
       type: 'CONTROL_STOP';
-    }
-  | {
-      type: 'MANUAL_REFRESH';
-      payload?: {
-        tokenAddress?: string;
-        tabId?: number;
-      };
     };
 
 export function postRuntimeMessage(message: RuntimeMessage): Promise<void> {

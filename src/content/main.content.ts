@@ -1,6 +1,6 @@
 import { DEFAULT_POINTS_FACTOR, DEFAULT_PRICE_OFFSET_PERCENT } from '../config/defaults.js';
 import { SELECTORS } from '../config/selectors.js';
-import { RuntimeMessage, TaskResultMeta, postRuntimeMessage } from '../lib/messages.js';
+import { postRuntimeMessage, type RuntimeMessage, type TaskResultMeta } from '../lib/messages.js';
 
 const POLLING_INTERVAL_MS = 1_000;
 const ORDER_PLACEMENT_COOLDOWN_MS = 15_000;
@@ -681,7 +681,7 @@ function initializeAutomationStateWatcher(): void {
   void refreshAutomationState();
 
   chrome.storage.onChanged.addListener((changes, areaName) => {
-    if (areaName !== 'local' || !Object.prototype.hasOwnProperty.call(changes, STORAGE_KEY)) {
+    if (areaName !== 'local' || !(STORAGE_KEY in changes)) {
       return;
     }
 
@@ -859,7 +859,6 @@ async function configureLimitOrder(params: {
   }
 
   buyButton.click();
-  await waitRandomDelay();
   scheduleOrderConfirmationClick();
 
   return availableUsdt;
@@ -898,7 +897,7 @@ function ensureReverseOrderToggle(orderPanel: HTMLElement): boolean {
 function scheduleOrderConfirmationClick(): void {
   const ATTEMPT_DURATION_MS = 2_000;
   const ATTEMPT_INTERVAL_MS = 100;
-  const INITIAL_DELAY_MS = randomIntInRange(1_000, 3_000);
+  const INITIAL_DELAY_MS = randomIntInRange(300, 800);
 
   const runAttempts = () => {
     const start = Date.now();
@@ -974,30 +973,6 @@ function formatNumberFixedDecimals(value: number, fractionDigits: number): strin
   return value.toFixed(fractionDigits);
 }
 
-function formatNumberForInput(value: number, fractionDigits = 8): string {
-  if (!Number.isFinite(value)) {
-    return '0';
-  }
-
-  const fixed = value.toFixed(fractionDigits);
-  return fixed.replace(/\.0+$|0+$/u, (match) => (match.startsWith('.') ? '' : '')) || '0';
-}
-
-function getNumericInputValue(input: HTMLInputElement): number | null {
-  const raw = input.value;
-  if (!raw) {
-    return null;
-  }
-
-  const sanitized = raw.replace(/[,\s]/g, '');
-  if (!sanitized) {
-    return null;
-  }
-
-  const parsed = Number.parseFloat(sanitized);
-  return Number.isFinite(parsed) ? parsed : null;
-}
-
 function extractAvailableUsdt(orderPanel: HTMLElement): number | null {
   const label = findElementWithExactText(orderPanel, 'Available');
   if (!label) {
@@ -1045,7 +1020,7 @@ function delay(milliseconds: number): Promise<void> {
   });
 }
 
-function waitRandomDelay(min = 1_000, max = 3_000): Promise<void> {
+function waitRandomDelay(min = 500, max = 1_000): Promise<void> {
   const duration = randomIntInRange(min, max);
   return delay(duration);
 }

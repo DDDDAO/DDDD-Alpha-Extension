@@ -23,11 +23,7 @@
   ],
   "web_accessible_resources": [
     {
-      "resources": [
-        "dist/content/main.content.js",
-        "dist/config/*.js",
-        "dist/lib/*.js"
-      ],
+      "resources": ["dist/content/main.content.js", "dist/config/*.js", "dist/lib/*.js"],
       "matches": ["https://www.binance.com/*"]
     }
   ]

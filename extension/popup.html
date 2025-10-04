@@ -1,8 +1,8 @@
 <!doctype html>
-<html lang="en">
+<html lang="zh-CN">
   <head>
     <meta charset="utf-8" />
-    <title>Alpha Auto Bot</title>
+    <title>Alpha 自动机器人</title>
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <style>
       body {
@@ -138,20 +138,19 @@
     </style>
   </head>
   <body>
-    <h1>Automation Status</h1>
+    <h1>自动化状态</h1>
     <div id="controls">
-      <button id="control-start" type="button">Start</button>
-      <button id="control-stop" type="button">Stop</button>
-      <button id="control-refresh" type="button">Refresh VWAP</button>
+      <button id="control-start" type="button">启动</button>
+      <button id="control-stop" type="button">停止</button>
     </div>
     <div id="settings">
-      <label>Current token</label>
+      <label>当前代币</label>
       <div id="control-token-display" class="token-display">
         <div id="control-token-symbol" class="token-display__symbol">—</div>
         <div id="control-token-address" class="token-display__address">—</div>
       </div>
 
-      <label for="control-spread">Price offset (%)</label>
+      <label for="control-spread">价格偏移 (%)</label>
       <input
         id="control-spread"
         type="number"
@@ -161,10 +160,10 @@
         inputmode="decimal"
         placeholder="0.01"
         value="0.01"
-        title="Adjust how far limit orders deviate from VWAP"
+        title="调整限价订单与 VWAP 的偏离距离"
       />
 
-      <label for="control-points-factor">Points factor</label>
+      <label for="control-points-factor">积分系数</label>
       <input
         id="control-points-factor"
         type="number"
@@ -174,10 +173,10 @@
         inputmode="numeric"
         placeholder="1"
         value="1"
-        title="Multiplier applied to recorded buy volume after each successful order"
+        title="每次成功订单后应用于记录买入量的乘数"
       />
 
-      <label for="control-points-target">Points target</label>
+      <label for="control-points-target">积分目标</label>
       <input
         id="control-points-target"
         type="number"
@@ -187,39 +186,39 @@
         inputmode="numeric"
         placeholder="15"
         value="15"
-        title="Stop automation once today's alpha points exceed this threshold"
+        title="当今日 alpha 积分超过此阈值时停止自动化"
       />
     </div>
-    <div id="summary-message">Loading automation data…</div>
+    <div id="summary-message">加载自动化数据中…</div>
     <dl id="summary-grid">
-      <dt>Average price</dt>
+      <dt>平均价格</dt>
       <dd id="summary-price">—</dd>
 
-      <dt>Today's buy volume (UTC)</dt>
+      <dt>今日买入量 (UTC)</dt>
       <dd id="summary-daily-volume">—</dd>
 
-      <dt>Today's alpha points</dt>
+      <dt>今日 alpha 积分</dt>
       <dd id="summary-alpha-points">—</dd>
 
-      <dt>Buy volume to next point</dt>
+      <dt>距下一积分买入量</dt>
       <dd id="summary-alpha-next">—</dd>
 
-      <dt>Today's successful trades</dt>
+      <dt>今日成功交易</dt>
       <dd id="summary-successful-trades">—</dd>
 
-      <dt>Today's first balance (UTC)</dt>
+      <dt>今日初始余额 (UTC)</dt>
       <dd id="summary-first-balance">—</dd>
 
-      <dt>Current balance</dt>
+      <dt>当前余额</dt>
       <dd id="summary-current-balance">—</dd>
 
-      <dt>Today's total cost (UTC)</dt>
+      <dt>今日总成本 (UTC)</dt>
       <dd id="summary-total-cost">—</dd>
 
-      <dt>Cost ratio</dt>
+      <dt>成本比率</dt>
       <dd id="summary-cost-ratio">—</dd>
 
-      <dt>Timestamp</dt>
+      <dt>时间戳</dt>
       <dd id="summary-timestamp">—</dd>
     </dl>
 

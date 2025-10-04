@@ -22,6 +22,8 @@ Alpha Auto Bot is a Chrome Manifest V3 extension that automates VWAP (Volume-Wei
 2. Load `extension/` directory in Chrome at `chrome://extensions` (enable Developer mode)
 3. After code changes, run `npm run build` again and click "Reload" in Chrome Extensions page
 
+**IMPORTANT**: Always run `npm run build` after every code update to ensure the extension uses the latest compiled code.
+
 ## Architecture
 
 ### Entry Points
@@ -102,3 +104,4 @@ Alpha Auto Bot is a Chrome Manifest V3 extension that automates VWAP (Volume-Wei
 - Content script also reads storage to sync automation enabled flag and settings (priceOffsetPercent, pointsFactor)
 - Daily metrics reset at UTC day boundary (detected by comparing `date` field)
 - Storage listeners in both background and content scripts for real-time sync
+- always lint and format and check before npm run build

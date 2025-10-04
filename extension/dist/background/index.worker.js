@@ -35,7 +35,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
             const existingFirstBalance = isSameDay && typeof previousDaily?.firstBalance === 'number'
                 ? previousDaily.firstBalance
                 : undefined;
-            const existingCurrentBalance = isSameDay && typeof previousDaily?.currentBalance === 'number'
+            const _existingCurrentBalance = isSameDay && typeof previousDaily?.currentBalance === 'number'
                 ? previousDaily.currentBalance
                 : undefined;
             const existingTotal = isSameDay && typeof previousDaily?.total === 'number' ? previousDaily.total : 0;
@@ -261,20 +261,6 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
         })();
         return true;
     }
-    if (message.type === 'MANUAL_REFRESH') {
-        const tokenAddress = 'payload' in message ? message.payload?.tokenAddress : undefined;
-        const tabId = 'payload' in message ? message.payload?.tabId : undefined;
-        void (async () => {
-            try {
-                await handleManualRefresh(tokenAddress, tabId);
-                sendResponse({ acknowledged: true });
-            }
-            catch (error) {
-                sendResponse({ acknowledged: false, error: normalizeError(error) });
-            }
-        })();
-        return true;
-    }
     return false;
 });
 async function bootstrapScheduler() {
@@ -400,23 +386,6 @@ async function handleControlStop() {
         isRunning: false,
     }));
 }
-async function handleManualRefresh(tokenAddress, tabId) {
-    if (tokenAddress) {
-        await updateSchedulerState((state) => ({
-            ...state,
-            settings: {
-                ...state.settings,
-                tokenAddress: sanitizeTokenAddress(tokenAddress) ?? state.settings.tokenAddress,
-            },
-        }));
-    }
-    await runAutomationCycle({
-        force: true,
-        trigger: 'manual',
-        tokenAddressOverride: tokenAddress,
-        targetTabId: sanitizeTabId(tabId),
-    });
-}
 async function clearAutomationAlarm() {
     await new Promise((resolve) => {
         chrome.alarms.clear(alarmName, () => resolve());
@@ -509,7 +478,7 @@ function calculateAlphaPointStats(volume) {
     }
     const rawPoints = Math.floor(Math.log2(volume));
     const points = rawPoints > 0 ? rawPoints : 0;
-    const nextThreshold = Math.pow(2, points + 1);
+    const nextThreshold = 2 ** (points + 1);
     const delta = Math.max(0, nextThreshold - volume);
     return {
         points,

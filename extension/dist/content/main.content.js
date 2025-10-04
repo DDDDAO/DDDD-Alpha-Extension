@@ -536,7 +536,7 @@ function initializeAutomationStateWatcher() {
     automationStateWatcherInitialized = true;
     void refreshAutomationState();
     chrome.storage.onChanged.addListener((changes, areaName) => {
-        if (areaName !== 'local' || !Object.prototype.hasOwnProperty.call(changes, STORAGE_KEY)) {
+        if (areaName !== 'local' || !(STORAGE_KEY in changes)) {
             return;
         }
         const newValue = changes[STORAGE_KEY]?.newValue;
@@ -672,7 +672,6 @@ async function configureLimitOrder(params) {
         throw new Error('Buy button not found.');
     }
     buyButton.click();
-    await waitRandomDelay();
     scheduleOrderConfirmationClick();
     return availableUsdt;
 }
@@ -701,7 +700,7 @@ function ensureReverseOrderToggle(orderPanel) {
 function scheduleOrderConfirmationClick() {
     const ATTEMPT_DURATION_MS = 2_000;
     const ATTEMPT_INTERVAL_MS = 100;
-    const INITIAL_DELAY_MS = randomIntInRange(1_000, 3_000);
+    const INITIAL_DELAY_MS = randomIntInRange(300, 800);
     const runAttempts = () => {
         const start = Date.now();
         const attempt = () => {
@@ -758,25 +757,6 @@ function formatNumberFixedDecimals(value, fractionDigits) {
     }
     return value.toFixed(fractionDigits);
 }
-function formatNumberForInput(value, fractionDigits = 8) {
-    if (!Number.isFinite(value)) {
-        return '0';
-    }
-    const fixed = value.toFixed(fractionDigits);
-    return fixed.replace(/\.0+$|0+$/u, (match) => (match.startsWith('.') ? '' : '')) || '0';
-}
-function getNumericInputValue(input) {
-    const raw = input.value;
-    if (!raw) {
-        return null;
-    }
-    const sanitized = raw.replace(/[,\s]/g, '');
-    if (!sanitized) {
-        return null;
-    }
-    const parsed = Number.parseFloat(sanitized);
-    return Number.isFinite(parsed) ? parsed : null;
-}
 function extractAvailableUsdt(orderPanel) {
     const label = findElementWithExactText(orderPanel, 'Available');
     if (!label) {
@@ -817,7 +797,7 @@ function delay(milliseconds) {
         setTimeout(resolve, milliseconds);
     });
 }
-function waitRandomDelay(min = 1_000, max = 3_000) {
+function waitRandomDelay(min = 500, max = 1_000) {
     const duration = randomIntInRange(min, max);
     return delay(duration);
 }

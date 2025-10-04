@@ -5,9 +5,11 @@ const DEFAULT_POINTS_TARGET = 15;
 const MAX_PRICE_OFFSET_PERCENT = 5;
 const MAX_POINTS_TARGET = 1000;
 const BUILTIN_DEFAULT_TOKEN_ADDRESS = '0xe6df05ce8c8301223373cf5b969afcb1498c5528';
-const BINANCE_ALPHA_PATTERN = /^https:\/\/www\.binance\.com\/(?:[a-z]{2}(?:-[A-Z]{2})?\/)alpha\/bsc\/(0x[a-fA-F0-9]{40})(?:[/?#]|$)/u;
+const BINANCE_ALPHA_PATTERN =
+  /^https:\/\/www\.binance\.com\/(?:[a-z]{2}(?:-[A-Z]{2})?\/)alpha\/bsc\/(0x[a-fA-F0-9]{40})(?:[/?#]|$)/u;
 
-const DEFAULT_BINANCE_ALPHA_URL = 'https://www.binance.com/en/alpha/bsc/0xe6df05ce8c8301223373cf5b969afcb1498c5528';
+const DEFAULT_BINANCE_ALPHA_URL =
+  'https://www.binance.com/en/alpha/bsc/0xe6df05ce8c8301223373cf5b969afcb1498c5528';
 const DEFAULT_CONTROL_STATE = { isRunning: false, isEnabled: false };
 let latestControlState = { ...DEFAULT_CONTROL_STATE };
 let latestSchedulerState = null;
@@ -18,12 +20,11 @@ let activeTabContext = {
   tokenSymbol: null,
   currentBalance: null,
   tabId: null,
-  isSupported: false
+  isSupported: false,
 };
 
 const startButton = document.getElementById('control-start');
 const stopButton = document.getElementById('control-stop');
-const refreshButton = document.getElementById('control-refresh');
 const tokenDisplay = document.getElementById('control-token-display');
 const tokenSymbolDisplay = document.getElementById('control-token-symbol');
 const tokenAddressDisplay = document.getElementById('control-token-address');
@@ -83,7 +84,7 @@ function formatErrorValue(value) {
 
     try {
       return JSON.stringify(value);
-    } catch (error) {
+    } catch (_error) {
       return String(value);
     }
   }
@@ -236,7 +237,7 @@ function normalizeControlState(state) {
 
   return {
     isRunning: Boolean(state.isRunning),
-    isEnabled: state.isEnabled === true
+    isEnabled: state.isEnabled === true,
   };
 }
 
@@ -250,10 +251,6 @@ function applyControlState(controlState) {
 
   if (stopButton) {
     stopButton.disabled = controlsBusy || !state.isEnabled;
-  }
-
-  if (refreshButton) {
-    refreshButton.disabled = controlsBusy || state.isRunning || !canOperate;
   }
 
   if (spreadInput) {
@@ -312,7 +309,9 @@ async function dispatchControlMessage(type, payload) {
   });
 
   if (!response || response.acknowledged !== true) {
-    const errorText = response?.error ? String(response.error) : 'Unable to reach background script.';
+    const errorText = response?.error
+      ? String(response.error)
+      : 'Unable to reach background script.';
     throw new Error(errorText);
   }
 }
@@ -427,7 +426,7 @@ if (startButton) {
       }
 
       const payload = {
-        tokenAddress: activeTabContext.tokenAddress
+        tokenAddress: activeTabContext.tokenAddress,
       };
 
       if (typeof activeTabContext.tabId === 'number') {
@@ -442,26 +441,6 @@ if (startButton) {
 if (stopButton) {
   stopButton.addEventListener('click', () => {
     void handleControl(() => dispatchControlMessage('CONTROL_STOP'));
-  });
-}
-
-if (refreshButton) {
-  refreshButton.addEventListener('click', () => {
-    void handleControl(async () => {
-      if (!activeTabContext.isSupported || !activeTabContext.tokenAddress) {
-        throw new Error('Open a Binance Alpha token page in the active tab before refreshing.');
-      }
-
-      const payload = {
-        tokenAddress: activeTabContext.tokenAddress
-      };
-
-      if (typeof activeTabContext.tabId === 'number') {
-        payload.tabId = activeTabContext.tabId;
-      }
-
-      await dispatchControlMessage('MANUAL_REFRESH', payload);
-    });
   });
 }
 
@@ -484,8 +463,7 @@ if (pointsTargetInput) {
 }
 
 async function persistSchedulerSettings(settingsPatch) {
-  const baseState =
-    latestSchedulerState ??
+  const baseState = latestSchedulerState ??
     (await loadState()) ?? {
       isRunning: false,
       isEnabled: false,
@@ -493,8 +471,8 @@ async function persistSchedulerSettings(settingsPatch) {
         priceOffsetPercent: DEFAULT_PRICE_OFFSET_PERCENT,
         tokenAddress: DEFAULT_TOKEN_ADDRESS,
         pointsFactor: DEFAULT_POINTS_FACTOR,
-        pointsTarget: DEFAULT_POINTS_TARGET
-      }
+        pointsTarget: DEFAULT_POINTS_TARGET,
+      },
     };
 
   const baseSettings =
@@ -504,7 +482,7 @@ async function persistSchedulerSettings(settingsPatch) {
           priceOffsetPercent: DEFAULT_PRICE_OFFSET_PERCENT,
           tokenAddress: DEFAULT_TOKEN_ADDRESS,
           pointsFactor: DEFAULT_POINTS_FACTOR,
-          pointsTarget: DEFAULT_POINTS_TARGET
+          pointsTarget: DEFAULT_POINTS_TARGET,
         };
 
   const nextState = {
@@ -514,8 +492,8 @@ async function persistSchedulerSettings(settingsPatch) {
       tokenAddress: getTokenAddress({ settings: baseSettings }),
       pointsFactor: getPointsFactor({ settings: baseSettings }),
       pointsTarget: getPointsTarget({ settings: baseSettings }),
-      ...settingsPatch
-    }
+      ...settingsPatch,
+    },
   };
 
   latestSchedulerState = nextState;
@@ -555,11 +533,15 @@ async function refreshActiveTabContext() {
     if (tabId !== null && tokenAddress) {
       [tokenSymbol, currentBalance] = await Promise.all([
         requestTokenSymbolFromTab(tabId),
-        requestCurrentBalanceFromTab(tabId)
+        requestCurrentBalanceFromTab(tabId),
       ]);
     }
 
-    if (!tokenSymbol && previousContext.tokenAddress === tokenAddress && previousContext.tokenSymbol) {
+    if (
+      !tokenSymbol &&
+      previousContext.tokenAddress === tokenAddress &&
+      previousContext.tokenSymbol
+    ) {
       tokenSymbol = previousContext.tokenSymbol;
     }
 
@@ -577,7 +559,7 @@ async function refreshActiveTabContext() {
       tokenSymbol,
       currentBalance,
       tabId,
-      isSupported: Boolean(tokenAddress)
+      isSupported: Boolean(tokenAddress),
     };
   } catch (error) {
     activeTabContext = {
@@ -586,7 +568,7 @@ async function refreshActiveTabContext() {
       tokenSymbol: null,
       currentBalance: null,
       tabId: null,
-      isSupported: false
+      isSupported: false,
     };
 
     // eslint-disable-next-line no-console
@@ -735,11 +717,14 @@ async function render() {
 
     const statusParts = [];
     if (!activeTabContext.isSupported) {
-      statusParts.push('Active tab unsupported. Open a Binance Alpha token page to enable controls.');
+      statusParts.push(
+        'Active tab unsupported. Open a Binance Alpha token page to enable controls.',
+      );
     }
 
     const fallbackCurrentBalance =
-      typeof activeTabContext.currentBalance === 'number' && Number.isFinite(activeTabContext.currentBalance)
+      typeof activeTabContext.currentBalance === 'number' &&
+      Number.isFinite(activeTabContext.currentBalance)
         ? activeTabContext.currentBalance
         : null;
 
@@ -751,7 +736,7 @@ async function render() {
       firstBalanceEl.textContent = '—';
       currentBalanceEl.textContent = formatNumber(fallbackCurrentBalance, {
         minimumFractionDigits: 2,
-        maximumFractionDigits: 2
+        maximumFractionDigits: 2,
       });
       totalCostEl.textContent = '—';
       costRatioEl.textContent = '—';
@@ -782,12 +767,9 @@ async function render() {
       return;
     }
 
-    statusParts.push('Latest VWAP snapshot below.');
-    messageEl.textContent = statusParts.join(' • ');
-
     priceEl.textContent = formatNumber(snapshot.averagePrice, {
       minimumFractionDigits: 4,
-      maximumFractionDigits: 8
+      maximumFractionDigits: 8,
     });
 
     const todayKey = new Date().toISOString().slice(0, 10);
@@ -800,7 +782,7 @@ async function render() {
 
     dailyVolumeEl.textContent = formatNumber(todaysVolume, {
       minimumFractionDigits: 2,
-      maximumFractionDigits: 2
+      maximumFractionDigits: 2,
     });
 
     let todaysFirstBalance;
@@ -816,7 +798,7 @@ async function render() {
 
     firstBalanceEl.textContent = formatNumber(todaysFirstBalance, {
       minimumFractionDigits: 2,
-      maximumFractionDigits: 2
+      maximumFractionDigits: 2,
     });
 
     let currentBalance = fallbackCurrentBalance ?? undefined;
@@ -832,7 +814,7 @@ async function render() {
 
     currentBalanceEl.textContent = formatNumber(currentBalance, {
       minimumFractionDigits: 2,
-      maximumFractionDigits: 2
+      maximumFractionDigits: 2,
     });
 
     let todaysTotalCost;
@@ -859,7 +841,7 @@ async function render() {
 
     totalCostEl.textContent = formatNumber(todaysTotalCost, {
       minimumFractionDigits: 2,
-      maximumFractionDigits: 2
+      maximumFractionDigits: 2,
     });
 
     let todaysCostRatio;
@@ -896,7 +878,7 @@ async function render() {
       alphaPointsEl.textContent = todaysAlphaPoints.toString();
       if (todaysAlphaPoints >= pointsTargetValue) {
         statusParts.push(
-          `Points target reached (${todaysAlphaPoints} ≥ ${pointsTargetValue}). Automation paused.`
+          `Points target reached (${todaysAlphaPoints} ≥ ${pointsTargetValue}). Automation paused.`,
         );
       }
     } else {
@@ -916,7 +898,7 @@ async function render() {
 
     alphaNextEl.textContent = formatNumber(nextPointDelta, {
       minimumFractionDigits: 2,
-      maximumFractionDigits: 2
+      maximumFractionDigits: 2,
     });
 
     let successfulTrades;
@@ -938,6 +920,8 @@ async function render() {
     timestampEl.textContent = snapshot.timestamp
       ? new Date(snapshot.timestamp).toLocaleString()
       : '—';
+
+    messageEl.textContent = statusParts.join(' • ');
 
     gridEl.style.display = 'grid';
     gridEl.style.rowGap = '4px';

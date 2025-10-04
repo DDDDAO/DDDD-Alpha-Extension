@@ -113,7 +113,7 @@ chrome.runtime.onMessage.addListener((message: RuntimeMessage, _sender, sendResp
 
     if (success && meta?.averagePrice !== undefined) {
       // eslint-disable-next-line no-console
-      console.log('[alpha-auto-bot] Last VWAP result', {
+      console.log('[dddd-alpha-extension] Last VWAP result', {
         averagePrice: meta.averagePrice,
         tradeCount: meta.tradeCount,
         buyVolumeDelta,
@@ -295,7 +295,7 @@ async function scheduleImmediateRun(options: RunOptions = {}): Promise<void> {
     await runAutomationCycle(options);
   } catch (error) {
     // eslint-disable-next-line no-console
-    console.warn('[alpha-auto-bot] Immediate automation run failed', error);
+    console.warn('[dddd-alpha-extension] Immediate automation run failed', error);
   } finally {
     immediateRunScheduled = false;
   }
@@ -390,6 +390,8 @@ async function handleControlStart(tokenAddress?: string, tabId?: number): Promis
     };
   });
   await ensureAlarm();
+  // Wait for storage change to propagate to content script
+  await delay(100);
   const sanitizedToken = sanitizeTokenAddress(tokenAddress);
   const sanitizedTabId = sanitizeTabId(tabId);
   void scheduleImmediateRun({
@@ -404,6 +406,7 @@ async function handleControlStop(): Promise<void> {
     ...state,
     isEnabled: false,
     isRunning: false,
+    lastError: undefined,
   }));
 }
 

@@ -1,4 +1,4 @@
-const STORAGE_KEY = 'alpha-auto-bot::state';
+const STORAGE_KEY = 'dddd-alpha-extension::state';
 const DEFAULT_PRICE_OFFSET_PERCENT = 0.01;
 const DEFAULT_POINTS_FACTOR = 1;
 const DEFAULT_POINTS_TARGET = 15;
@@ -280,7 +280,7 @@ async function handleControl(action) {
   } catch (error) {
     errorMessage = error instanceof Error ? error.message : String(error);
     // eslint-disable-next-line no-console
-    console.error('[alpha-auto-bot] Control request failed', error);
+    console.error('[dddd-alpha-extension] Control request failed', error);
   } finally {
     setControlsBusy(false);
     await render();
@@ -340,7 +340,7 @@ async function handleSpreadChange() {
     await persistSchedulerSettings({ priceOffsetPercent: sanitizedValue });
   } catch (error) {
     // eslint-disable-next-line no-console
-    console.error('[alpha-auto-bot] Failed to persist price offset', error);
+    console.error('[dddd-alpha-extension] Failed to persist price offset', error);
 
     const messageEl = document.getElementById('summary-message');
     if (messageEl) {
@@ -374,7 +374,7 @@ async function handlePointsFactorChange() {
     await persistSchedulerSettings({ pointsFactor: sanitizedValue });
   } catch (error) {
     // eslint-disable-next-line no-console
-    console.error('[alpha-auto-bot] Failed to persist points factor', error);
+    console.error('[dddd-alpha-extension] Failed to persist points factor', error);
 
     const messageEl = document.getElementById('summary-message');
     if (messageEl) {
@@ -408,7 +408,7 @@ async function handlePointsTargetChange() {
     await persistSchedulerSettings({ pointsTarget: sanitizedValue });
   } catch (error) {
     // eslint-disable-next-line no-console
-    console.error('[alpha-auto-bot] Failed to persist points target', error);
+    console.error('[dddd-alpha-extension] Failed to persist points target', error);
 
     const messageEl = document.getElementById('summary-message');
     if (messageEl) {
@@ -572,7 +572,7 @@ async function refreshActiveTabContext() {
     };
 
     // eslint-disable-next-line no-console
-    console.error('[alpha-auto-bot] Unable to inspect active tab URL', error);
+    console.error('[dddd-alpha-extension] Unable to inspect active tab URL', error);
   }
 }
 

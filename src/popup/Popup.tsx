@@ -25,7 +25,7 @@ import type { SchedulerState } from '../lib/storage';
 
 const { Text, Link, Title } = Typography;
 
-const STORAGE_KEY = 'alpha-auto-bot::state';
+const STORAGE_KEY = 'dddd-alpha-extension::state';
 const DEFAULT_PRICE_OFFSET_PERCENT = 0.01;
 const DEFAULT_POINTS_FACTOR = 1;
 const DEFAULT_POINTS_TARGET = 15;

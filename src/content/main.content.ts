@@ -7,7 +7,7 @@ const ORDER_PLACEMENT_COOLDOWN_MS = 5_000;
 const LIMIT_STATE_TIMEOUT_MS = 2_000;
 const LIMIT_STATE_POLL_INTERVAL_MS = 100;
 
-const STORAGE_KEY = 'alpha-auto-bot::state';
+const STORAGE_KEY = 'dddd-alpha-extension::state';
 const MIN_PRICE_OFFSET_PERCENT = 0;
 const MAX_PRICE_OFFSET_PERCENT = 5;
 
@@ -15,11 +15,11 @@ function getPageLocale(): 'en' | 'zh-CN' {
   const href = window.location.href;
   if (href.includes('/zh-CN/')) {
     // eslint-disable-next-line no-console
-    console.log('[alpha-auto-bot] Detected locale: zh-CN');
+    console.log('[dddd-alpha-extension] Detected locale: zh-CN');
     return 'zh-CN';
   }
   // eslint-disable-next-line no-console
-  console.log('[alpha-auto-bot] Detected locale: en (default)');
+  console.log('[dddd-alpha-extension] Detected locale: en (default)');
   return 'en';
 }
 
@@ -35,13 +35,13 @@ let pointsFactor = DEFAULT_POINTS_FACTOR;
 
 chrome.runtime.onMessage.addListener((message: RuntimeMessage, _sender, sendResponse) => {
   // eslint-disable-next-line no-console
-  console.log('[alpha-auto-bot] Received message:', message.type);
+  console.log('[dddd-alpha-extension] Received message:', message.type);
 
   if (message.type === 'RUN_TASK') {
     void handleAutomation().catch((error: unknown) => {
       const messageText = error instanceof Error ? error.message : String(error);
       // eslint-disable-next-line no-console
-      console.error('[alpha-auto-bot] RUN_TASK error:', messageText);
+      console.error('[dddd-alpha-extension] RUN_TASK error:', messageText);
       void postRuntimeMessage({
         type: 'TASK_ERROR',
         payload: { message: messageText },
@@ -54,11 +54,11 @@ chrome.runtime.onMessage.addListener((message: RuntimeMessage, _sender, sendResp
 
   if (message.type === 'RUN_TASK_ONCE') {
     // eslint-disable-next-line no-console
-    console.log('[alpha-auto-bot] Starting manual run');
+    console.log('[dddd-alpha-extension] Starting manual run');
     void handleManualRun().catch((error: unknown) => {
       const messageText = error instanceof Error ? error.message : String(error);
       // eslint-disable-next-line no-console
-      console.error('[alpha-auto-bot] RUN_TASK_ONCE error:', messageText);
+      console.error('[dddd-alpha-extension] RUN_TASK_ONCE error:', messageText);
       void postRuntimeMessage({
         type: 'TASK_ERROR',
         payload: { message: messageText },
@@ -72,7 +72,7 @@ chrome.runtime.onMessage.addListener((message: RuntimeMessage, _sender, sendResp
   if (message.type === 'REQUEST_TOKEN_SYMBOL') {
     const tokenSymbol = extractTokenSymbol();
     // eslint-disable-next-line no-console
-    console.log('[alpha-auto-bot] Token symbol requested:', tokenSymbol);
+    console.log('[dddd-alpha-extension] Token symbol requested:', tokenSymbol);
     sendResponse({
       acknowledged: Boolean(tokenSymbol),
       tokenSymbol: tokenSymbol ?? null,
@@ -91,7 +91,7 @@ chrome.runtime.onMessage.addListener((message: RuntimeMessage, _sender, sendResp
     }
 
     // eslint-disable-next-line no-console
-    console.log('[alpha-auto-bot] Current balance requested:', balanceValue);
+    console.log('[dddd-alpha-extension] Current balance requested:', balanceValue);
     sendResponse({
       acknowledged: balanceValue !== null,
       currentBalance: balanceValue ?? null,
@@ -132,12 +132,15 @@ async function sendInitialBalanceUpdate(): Promise<void> {
 
 async function handleAutomation(): Promise<void> {
   // eslint-disable-next-line no-console
-  console.log('[alpha-auto-bot] handleAutomation started, automationEnabled:', automationEnabled);
+  console.log(
+    '[dddd-alpha-extension] handleAutomation started, automationEnabled:',
+    automationEnabled,
+  );
 
   const needsLogin = checkForLoginPrompt();
   if (needsLogin) {
     // eslint-disable-next-line no-console
-    console.warn('[alpha-auto-bot] Login required detected');
+    console.warn('[dddd-alpha-extension] Login required detected');
     await dispatchRuntimeMessage({
       type: 'TASK_ERROR',
       payload: { message: 'Login required. Please authenticate manually.' },
@@ -149,7 +152,7 @@ async function handleAutomation(): Promise<void> {
   loginErrorDispatched = false;
   if (!automationEnabled) {
     // eslint-disable-next-line no-console
-    console.log('[alpha-auto-bot] Automation disabled, tearing down polling');
+    console.log('[dddd-alpha-extension] Automation disabled, tearing down polling');
     teardownPolling();
     return;
   }
@@ -182,21 +185,25 @@ function checkForLoginPrompt(): boolean {
 async function ensurePolling(): Promise<void> {
   if (!isExtensionContextValid()) {
     // eslint-disable-next-line no-console
-    console.warn('[alpha-auto-bot] Extension context invalid, tearing down');
+    console.warn('[dddd-alpha-extension] Extension context invalid, tearing down');
     teardownPolling();
     return;
   }
 
   if (!automationEnabled) {
     // eslint-disable-next-line no-console
-    console.log('[alpha-auto-bot] Automation not enabled, tearing down');
+    console.log('[dddd-alpha-extension] Automation not enabled, tearing down');
     teardownPolling();
     return;
   }
 
   if (pollingTimerId === undefined) {
     // eslint-disable-next-line no-console
-    console.log('[alpha-auto-bot] Starting polling with interval:', POLLING_INTERVAL_MS, 'ms');
+    console.log(
+      '[dddd-alpha-extension] Starting polling with interval:',
+      POLLING_INTERVAL_MS,
+      'ms',
+    );
     pollingTimerId = window.setInterval(() => {
       void runEvaluationCycle(true, { placeOrder: true });
     }, POLLING_INTERVAL_MS);
@@ -215,21 +222,21 @@ async function runEvaluationCycle(
 ): Promise<void> {
   if (!isExtensionContextValid()) {
     // eslint-disable-next-line no-console
-    console.warn('[alpha-auto-bot] Extension context invalid in evaluation cycle');
+    console.warn('[dddd-alpha-extension] Extension context invalid in evaluation cycle');
     teardownPolling();
     return;
   }
 
   if (evaluationInProgress) {
     // eslint-disable-next-line no-console
-    console.log('[alpha-auto-bot] Evaluation already in progress, skipping');
+    console.log('[dddd-alpha-extension] Evaluation already in progress, skipping');
     return;
   }
 
   evaluationInProgress = true;
   // eslint-disable-next-line no-console
   console.log(
-    '[alpha-auto-bot] Starting evaluation cycle, placeOrder:',
+    '[dddd-alpha-extension] Starting evaluation cycle, placeOrder:',
     options.placeOrder !== false,
   );
 
@@ -238,7 +245,7 @@ async function runEvaluationCycle(
 
     if (requireAutomationEnabled && !automationEnabled) {
       // eslint-disable-next-line no-console
-      console.log('[alpha-auto-bot] Automation disabled during evaluation, tearing down');
+      console.log('[dddd-alpha-extension] Automation disabled during evaluation, tearing down');
       teardownPolling();
       return;
     }
@@ -246,7 +253,7 @@ async function runEvaluationCycle(
     if (checkForLoginPrompt()) {
       if (!loginErrorDispatched) {
         // eslint-disable-next-line no-console
-        console.warn('[alpha-auto-bot] Login prompt detected during evaluation');
+        console.warn('[dddd-alpha-extension] Login prompt detected during evaluation');
         await dispatchRuntimeMessage({
           type: 'TASK_ERROR',
           payload: { message: 'Login required. Please authenticate manually.' },
@@ -260,7 +267,7 @@ async function runEvaluationCycle(
 
     const result = await executePrimaryTask({ placeOrder });
     // eslint-disable-next-line no-console
-    console.log('[alpha-auto-bot] Task completed:', result.success, result.details);
+    console.log('[dddd-alpha-extension] Task completed:', result.success, result.details);
     await dispatchRuntimeMessage({
       type: 'TASK_COMPLETE',
       payload: result,
@@ -268,7 +275,7 @@ async function runEvaluationCycle(
   } catch (error) {
     const messageText = error instanceof Error ? error.message : String(error);
     // eslint-disable-next-line no-console
-    console.error('[alpha-auto-bot] Evaluation cycle error:', messageText);
+    console.error('[dddd-alpha-extension] Evaluation cycle error:', messageText);
     await dispatchRuntimeMessage({
       type: 'TASK_ERROR',
       payload: { message: messageText },
@@ -286,12 +293,12 @@ async function executePrimaryTask(
   options: TaskExecutionOptions = {},
 ): Promise<{ success: boolean; details?: string; meta?: TaskResultMeta }> {
   // eslint-disable-next-line no-console
-  console.log('[alpha-auto-bot] executePrimaryTask started');
+  console.log('[dddd-alpha-extension] executePrimaryTask started');
 
   const panel = findTradeHistoryPanel();
   if (!panel) {
     // eslint-disable-next-line no-console
-    console.error('[alpha-auto-bot] Trade history panel not found');
+    console.error('[dddd-alpha-extension] Trade history panel not found');
     return {
       success: false,
       details: 'Unable to locate limit trade history panel.',
@@ -300,24 +307,24 @@ async function executePrimaryTask(
 
   const trades = extractTradeHistorySamples(panel);
   // eslint-disable-next-line no-console
-  console.log('[alpha-auto-bot] Extracted trades:', trades.length);
+  console.log('[dddd-alpha-extension] Extracted trades:', trades.length);
   if (!trades.length) {
     return { success: false, details: 'No limit trade entries detected.' };
   }
 
   const tokenSymbol = extractTokenSymbol();
   // eslint-disable-next-line no-console
-  console.log('[alpha-auto-bot] Token symbol:', tokenSymbol);
+  console.log('[dddd-alpha-extension] Token symbol:', tokenSymbol);
 
   const averagePrice = calculateVolumeWeightedAverage(trades);
   if (averagePrice === null) {
     // eslint-disable-next-line no-console
-    console.error('[alpha-auto-bot] Failed to calculate VWAP');
+    console.error('[dddd-alpha-extension] Failed to calculate VWAP');
     return { success: false, details: 'Failed to compute average price.' };
   }
 
   // eslint-disable-next-line no-console
-  console.log('[alpha-auto-bot] Calculated VWAP:', averagePrice);
+  console.log('[dddd-alpha-extension] Calculated VWAP:', averagePrice);
 
   const tradeCount = trades.length;
   const precision = averagePrice < 1 ? 8 : 6;
@@ -333,7 +340,7 @@ async function executePrimaryTask(
   if (shouldPlaceOrder) {
     // eslint-disable-next-line no-console
     console.log(
-      '[alpha-auto-bot] Attempting to place order, priceOffsetPercent:',
+      '[dddd-alpha-extension] Attempting to place order, priceOffsetPercent:',
       priceOffsetPercent,
     );
     try {
@@ -342,11 +349,11 @@ async function executePrimaryTask(
         priceOffsetPercent,
       });
       // eslint-disable-next-line no-console
-      console.log('[alpha-auto-bot] Order result:', orderResult.status, orderResult.reason);
+      console.log('[dddd-alpha-extension] Order result:', orderResult.status, orderResult.reason);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       // eslint-disable-next-line no-console
-      console.error('[alpha-auto-bot] Order placement error:', message);
+      console.error('[dddd-alpha-extension] Order placement error:', message);
       return { success: false, details: `Order placement failed: ${message}` };
     }
 
@@ -387,7 +394,7 @@ async function executePrimaryTask(
   }
 
   // eslint-disable-next-line no-console
-  console.log('[alpha-auto-bot] Limit VWAP', {
+  console.log('[dddd-alpha-extension] Limit VWAP', {
     averagePrice,
     formattedAverage,
     tokenSymbol: tokenSymbol ?? null,
@@ -442,7 +449,7 @@ async function dispatchRuntimeMessage(message: RuntimeMessage): Promise<void> {
     await postRuntimeMessage(message);
   } catch (error) {
     // eslint-disable-next-line no-console
-    console.warn('[alpha-auto-bot] Failed to post runtime message', error);
+    console.warn('[dddd-alpha-extension] Failed to post runtime message', error);
 
     const messageText = error instanceof Error ? error.message : String(error ?? '');
     if (/extension context invalidated/i.test(messageText)) {
@@ -587,12 +594,12 @@ async function ensureLimitOrderPlaced(params: {
   priceOffsetPercent: number;
 }): Promise<OrderPlacementResult> {
   // eslint-disable-next-line no-console
-  console.log('[alpha-auto-bot] ensureLimitOrderPlaced started');
+  console.log('[dddd-alpha-extension] ensureLimitOrderPlaced started');
 
   const openOrdersRoot = getOpenOrdersRoot();
   if (!openOrdersRoot) {
     // eslint-disable-next-line no-console
-    console.error('[alpha-auto-bot] Open orders root not found');
+    console.error('[dddd-alpha-extension] Open orders root not found');
     throw new Error('Open orders section unavailable.');
   }
 
@@ -600,7 +607,7 @@ async function ensureLimitOrderPlaced(params: {
 
   const orderState = await resolveLimitOrderState(openOrdersRoot);
   // eslint-disable-next-line no-console
-  console.log('[alpha-auto-bot] Order state:', orderState);
+  console.log('[dddd-alpha-extension] Order state:', orderState);
 
   if (orderState === 'non-empty') {
     return {
@@ -616,7 +623,7 @@ async function ensureLimitOrderPlaced(params: {
   const now = Date.now();
   const timeSinceLastOrder = now - lastOrderPlacedAt;
   // eslint-disable-next-line no-console
-  console.log('[alpha-auto-bot] Time since last order:', timeSinceLastOrder, 'ms');
+  console.log('[dddd-alpha-extension] Time since last order:', timeSinceLastOrder, 'ms');
 
   if (timeSinceLastOrder < ORDER_PLACEMENT_COOLDOWN_MS) {
     return {
@@ -628,13 +635,13 @@ async function ensureLimitOrderPlaced(params: {
   const orderPanel = getTradingFormPanel();
   if (!orderPanel) {
     // eslint-disable-next-line no-console
-    console.error('[alpha-auto-bot] Trading form panel not found');
+    console.error('[dddd-alpha-extension] Trading form panel not found');
     throw new Error('Trading form panel not found.');
   }
 
   const availableUsdt = extractAvailableUsdt(orderPanel);
   // eslint-disable-next-line no-console
-  console.log('[alpha-auto-bot] Available USDT:', availableUsdt);
+  console.log('[dddd-alpha-extension] Available USDT:', availableUsdt);
 
   if (availableUsdt === null) {
     throw new Error('Unable to determine available USDT balance.');
@@ -712,7 +719,7 @@ async function resolveLimitOrderState(
 function detectLimitOrderState(root: HTMLElement): 'empty' | 'non-empty' | 'unknown' {
   const container = getLimitOrdersContainer(root);
   if (!container) {
-    console.log('[alpha-auto-bot] Limit orders container not found');
+    console.log('[dddd-alpha-extension] Limit orders container not found');
     return 'unknown';
   }
 
@@ -720,18 +727,18 @@ function detectLimitOrderState(root: HTMLElement): 'empty' | 'non-empty' | 'unkn
   const emptyLabel = locale === 'zh-CN' ? '无进行中的订单' : 'No Ongoing Orders';
   const emptyNode = findElementWithExactText(container, emptyLabel);
   if (emptyNode) {
-    console.log('[alpha-auto-bot] Limit orders container found empty');
+    console.log('[dddd-alpha-extension] Limit orders container found empty');
     return 'empty';
   }
 
   const rowCandidates = container.querySelectorAll('[data-row-index],[role="row"],table tbody tr');
   for (const candidate of Array.from(rowCandidates)) {
     if (candidate.textContent && candidate.textContent.trim().length > 0) {
-      console.log('[alpha-auto-bot] Limit orders container found non-empty');
+      console.log('[dddd-alpha-extension] Limit orders container found non-empty');
       return 'non-empty';
     }
   }
-  console.log('[alpha-auto-bot] Limit orders container unknown');
+  console.log('[dddd-alpha-extension] Limit orders container unknown');
 
   return 'unknown';
 }
@@ -764,7 +771,7 @@ function getTradingFormPanel(): HTMLElement | null {
 function teardownPolling(): void {
   if (pollingTimerId !== undefined) {
     // eslint-disable-next-line no-console
-    console.log('[alpha-auto-bot] Tearing down polling');
+    console.log('[dddd-alpha-extension] Tearing down polling');
     clearInterval(pollingTimerId);
     pollingTimerId = undefined;
   }
@@ -823,7 +830,7 @@ function applyAutomationState(value: unknown): void {
 
   if (stateChanged) {
     // eslint-disable-next-line no-console
-    console.log('[alpha-auto-bot] Automation state updated:', {
+    console.log('[dddd-alpha-extension] Automation state updated:', {
       enabled: nextEnabled,
       priceOffsetPercent: nextPriceOffset,
       pointsFactor: nextPointsFactor,
@@ -941,7 +948,7 @@ async function configureLimitOrder(params: {
   const reversePriceValue = formatNumberFixedDecimals(reversePrice, 8);
 
   // eslint-disable-next-line no-console
-  console.log('[alpha-auto-bot] Configuring order:', {
+  console.log('[dddd-alpha-extension] Configuring order:', {
     basePrice: price,
     offsetPercent: clampedOffsetPercent,
     buyPrice: buyPriceValue,
@@ -952,18 +959,18 @@ async function configureLimitOrder(params: {
   const priceInput = orderPanel.querySelector<HTMLInputElement>('#limitPrice');
   if (!priceInput) {
     // eslint-disable-next-line no-console
-    console.error('[alpha-auto-bot] Limit price input not found');
+    console.error('[dddd-alpha-extension] Limit price input not found');
     throw new Error('Limit price input not found.');
   }
   // eslint-disable-next-line no-console
-  console.log('[alpha-auto-bot] Setting buy price:', buyPriceValue);
+  console.log('[dddd-alpha-extension] Setting buy price:', buyPriceValue);
   await waitRandomDelay();
   setReactInputValue(priceInput, buyPriceValue);
   await waitForAnimationFrame();
 
   const toggleChanged = ensureReverseOrderToggle(orderPanel);
   // eslint-disable-next-line no-console
-  console.log('[alpha-auto-bot] Reverse order toggle changed:', toggleChanged);
+  console.log('[dddd-alpha-extension] Reverse order toggle changed:', toggleChanged);
   if (toggleChanged) {
     await waitForAnimationFrame();
   }
@@ -972,11 +979,11 @@ async function configureLimitOrder(params: {
   const slider = orderPanel.querySelector<HTMLInputElement>('input.bn-slider');
   if (!slider) {
     // eslint-disable-next-line no-console
-    console.error('[alpha-auto-bot] Order amount slider not found');
+    console.error('[dddd-alpha-extension] Order amount slider not found');
     throw new Error('Order amount slider not found.');
   }
   // eslint-disable-next-line no-console
-  console.log('[alpha-auto-bot] Setting slider to 100%');
+  console.log('[dddd-alpha-extension] Setting slider to 100%');
   slider.focus();
   slider.value = '100';
   slider.dispatchEvent(new Event('input', { bubbles: true }));
@@ -991,11 +998,11 @@ async function configureLimitOrder(params: {
   );
   if (!reversePriceInput) {
     // eslint-disable-next-line no-console
-    console.error('[alpha-auto-bot] Reverse order price input not found');
+    console.error('[dddd-alpha-extension] Reverse order price input not found');
     throw new Error('Reverse order price input not found.');
   }
   // eslint-disable-next-line no-console
-  console.log('[alpha-auto-bot] Setting reverse price:', reversePriceValue);
+  console.log('[dddd-alpha-extension] Setting reverse price:', reversePriceValue);
   setReactInputValue(reversePriceInput, reversePriceValue);
   await waitForAnimationFrame();
   await waitRandomDelay();
@@ -1003,12 +1010,12 @@ async function configureLimitOrder(params: {
   const buyButton = orderPanel.querySelector<HTMLButtonElement>('button.bn-button__buy');
   if (!buyButton) {
     // eslint-disable-next-line no-console
-    console.error('[alpha-auto-bot] Buy button not found');
+    console.error('[dddd-alpha-extension] Buy button not found');
     throw new Error('Buy button not found.');
   }
 
   // eslint-disable-next-line no-console
-  console.log('[alpha-auto-bot] Clicking buy button');
+  console.log('[dddd-alpha-extension] Clicking buy button');
   buyButton.click();
   scheduleOrderConfirmationClick();
 
@@ -1053,7 +1060,11 @@ function scheduleOrderConfirmationClick(): void {
   const INITIAL_DELAY_MS = randomIntInRange(300, 800);
 
   // eslint-disable-next-line no-console
-  console.log('[alpha-auto-bot] Scheduling confirmation click with delay:', INITIAL_DELAY_MS, 'ms');
+  console.log(
+    '[dddd-alpha-extension] Scheduling confirmation click with delay:',
+    INITIAL_DELAY_MS,
+    'ms',
+  );
 
   const runAttempts = () => {
     const start = Date.now();
@@ -1065,7 +1076,7 @@ function scheduleOrderConfirmationClick(): void {
       if (confirmButton) {
         // eslint-disable-next-line no-console
         console.log(
-          '[alpha-auto-bot] Confirm button found after',
+          '[dddd-alpha-extension] Confirm button found after',
           attemptCount,
           'attempts, clicking',
         );
@@ -1077,7 +1088,11 @@ function scheduleOrderConfirmationClick(): void {
         window.setTimeout(attempt, ATTEMPT_INTERVAL_MS);
       } else {
         // eslint-disable-next-line no-console
-        console.warn('[alpha-auto-bot] Confirm button not found after', attemptCount, 'attempts');
+        console.warn(
+          '[dddd-alpha-extension] Confirm button not found after',
+          attemptCount,
+          'attempts',
+        );
       }
     };
 

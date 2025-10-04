@@ -5,7 +5,7 @@
 ### 1️⃣ 编译项目
 
 ```bash
-cd /Users/zhangxuanyang/Desktop/Quant/alpha-auto-bot
+cd /Users/zhangxuanyang/Desktop/Quant/dddd-alpha-extension
 npm run build:ts
 npm run build:popup
 ```

@@ -1,4 +1,4 @@
-export const MESSAGE_CHANNEL = 'alpha-auto-bot::channel';
+export const MESSAGE_CHANNEL = 'dddd-alpha-extension::channel';
 
 export interface TaskResultMeta {
   averagePrice?: number;

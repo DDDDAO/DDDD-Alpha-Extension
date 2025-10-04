@@ -12,5 +12,5 @@ export function resolveTargetUrl(tokenAddress) {
 export const DEFAULT_AUTOMATION = {
   tokenAddress: DEFAULT_TOKEN_ADDRESS,
   intervalMinutes: 5,
-  alarmName: 'alpha-auto-bot::heartbeat',
+  alarmName: 'dddd-alpha-extension::heartbeat',
 };

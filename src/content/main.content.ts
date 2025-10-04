@@ -1020,7 +1020,9 @@ function ensureReverseOrderToggle(orderPanel: HTMLElement): boolean {
   const labelText = locale === 'zh-CN' ? '反向订单' : 'Reverse Order';
   const label = findElementWithExactText(orderPanel, labelText);
   if (!label) {
-    throw new Error('Reverse order toggle not found.');
+    throw new Error(
+      '反向订单开关没找到,通常是因为币安网页没有更新导致的,强制刷新一下页面 (Windows/Linux: Ctrl+Shift+R, Mac: Cmd+Shift+R)',
+    );
   }
 
   let toggle: HTMLElement | null = null;
@@ -1036,7 +1038,9 @@ function ensureReverseOrderToggle(orderPanel: HTMLElement): boolean {
   }
 
   if (!(toggle instanceof HTMLElement)) {
-    throw new Error('Reverse order toggle not found.');
+    throw new Error(
+      '反向订单开关没找到,通常是因为币安网页没有更新导致的,强制刷新一下页面 (Windows/Linux: Ctrl+Shift+R, Mac: Cmd+Shift+R)',
+    );
   }
 
   const isChecked = toggle.getAttribute('aria-checked') === 'true';

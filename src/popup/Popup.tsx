@@ -1,4 +1,5 @@
 import {
+  BarChartOutlined,
   ClockCircleOutlined,
   DollarOutlined,
   PauseCircleOutlined,
@@ -382,6 +383,10 @@ export function Popup(): React.ReactElement {
     return undefined;
   }
 
+  function handleOpenStability(): void {
+    chrome.tabs.create({ url: chrome.runtime.getURL('stability.html') });
+  }
+
   return (
     <div style={{ width: 420, padding: 16, background: '#f5f5f5', minHeight: 600 }}>
       <Card bordered={false} style={{ marginBottom: 16 }}>
@@ -391,6 +396,16 @@ export function Popup(): React.ReactElement {
               <ThunderboltOutlined style={{ color: '#1890ff' }} /> Alpha 自动交易
             </Title>
           </div>
+
+          <Button
+            type="default"
+            icon={<BarChartOutlined />}
+            onClick={handleOpenStability}
+            block
+            style={{ marginBottom: 8 }}
+          >
+            📊 稳定性看板
+          </Button>
 
           <Card title="当前代币" bordered={false} size="small" style={{ marginBottom: 8 }}>
             <Space direction="vertical" size="small" style={{ width: '100%' }}>

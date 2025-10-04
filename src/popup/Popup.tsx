@@ -3,14 +3,13 @@ import {
   DollarOutlined,
   PauseCircleOutlined,
   PlayCircleOutlined,
-  ThunderboltOutlined,
   TrophyOutlined,
 } from '@ant-design/icons';
 import { Alert, Button, Card, Col, InputNumber, Row, Space, Statistic, Typography } from 'antd';
 import React, { useCallback, useEffect, useId, useRef, useState } from 'react';
 import type { SchedulerState } from '../lib/storage';
 
-const { Title, Text, Link } = Typography;
+const { Text, Link, Title } = Typography;
 
 const STORAGE_KEY = 'alpha-auto-bot::state';
 const DEFAULT_PRICE_OFFSET_PERCENT = 0.01;
@@ -386,17 +385,33 @@ export function Popup(): React.ReactElement {
     <div style={{ width: 420, padding: 16, background: '#f5f5f5', minHeight: 600 }}>
       <Card bordered={false} style={{ marginBottom: 16 }}>
         <Space direction="vertical" size="middle" style={{ width: '100%' }}>
-          <div style={{ textAlign: 'center' }}>
-            <Title level={3} style={{ margin: 0 }}>
-              <ThunderboltOutlined style={{ color: '#1890ff' }} /> Alpha 自动交易
+          <div
+            style={{
+              textAlign: 'center',
+              marginBottom: 8,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '12px',
+            }}
+          >
+            <img
+              src="/logo.svg"
+              alt="Logo"
+              style={{ width: '32px', height: '32px', display: 'block' }}
+            />
+            <Title level={2} style={{ color: '#0DA2FF', margin: 0 }}>
+              DDDD Alpha 辅助工具
             </Title>
           </div>
 
           <Card title="当前代币" bordered={false} size="small" style={{ marginBottom: 8 }}>
             <Space direction="vertical" size="small" style={{ width: '100%' }}>
-              <Text strong style={{ fontSize: 16 }}>
-                {resolvedSymbol || '—'}
-              </Text>
+              <div>
+                <Text strong style={{ fontSize: 16 }}>
+                  {resolvedSymbol || '—'}
+                </Text>
+              </div>
               <Text type="secondary" style={{ fontSize: 12, wordBreak: 'break-all' }}>
                 {activeTab.tokenAddress || '未选择代币'}
               </Text>
@@ -636,9 +651,41 @@ export function Popup(): React.ReactElement {
                 </Text>
               </div>
             </Col>
+            <Col span={24}>
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  marginTop: '8px',
+                }}
+              >
+                <Text type="secondary" style={{ fontSize: 12 }}>
+                  加入电报社区一起讨论Alpha刷分心得:
+                </Text>
+                <Link href="https://t.me/ddddao2025" target="_blank" rel="noopener noreferrer">
+                  <img
+                    src="/tg_logo.svg"
+                    alt="Telegram"
+                    style={{ width: '20px', height: '20px', display: 'inline-block' }}
+                  />
+                </Link>
+              </div>
+            </Col>
           </Row>
         </Card>
       )}
+
+      <div style={{ textAlign: 'center', padding: '16px 0 8px', color: '#8c8c8c', fontSize: 12 }}>
+        Made with ❤️ by{' '}
+        <Link href="https://t.me/ddddao2025" target="_blank" rel="noopener noreferrer">
+          <img
+            src="/logo_with_name.svg"
+            alt="DDDDAO"
+            style={{ height: '16px', verticalAlign: 'middle' }}
+          />
+        </Link>
+      </div>
     </div>
   );
 }

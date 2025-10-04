@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "Alpha Auto Bot",
+  "name": "DDDD Alpha Extension",
   "version": "0.1.0",
   "description": "Schedules VWAP monitoring and automation tasks on Binance Alpha pages.",
   "permissions": ["alarms", "storage", "tabs"],
@@ -11,7 +11,17 @@
   },
   "action": {
     "default_popup": "popup.html",
-    "default_title": "Alpha Auto Bot"
+    "default_title": "DDDD Alpha Extension",
+    "default_icon": {
+      "16": "logo-16.png",
+      "48": "logo-48.png",
+      "128": "logo-128.png"
+    }
+  },
+  "icons": {
+    "16": "logo-16.png",
+    "48": "logo-48.png",
+    "128": "logo-128.png"
   },
   "options_page": "options.html",
   "content_scripts": [

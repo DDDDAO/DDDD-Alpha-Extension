@@ -24,7 +24,7 @@ function parseStability(st) {
 /**
  * 计算币种推荐评分
  * 评分规则：
- * - 稳定性：稳定=50分，不稳定=0分
+ * - 稳定性：稳定=50分，一般=25分，不稳定=0分
  * - 价差：越低越好 (0-50分)
  * 总分范围：0-100分
  */
@@ -34,6 +34,8 @@ function calculateScore(item) {
     let stabilityScore = 0;
     if (st.includes('stable'))
         stabilityScore = 50;
+    else if (st.includes('moderate'))
+        stabilityScore = 25;
     else
         stabilityScore = 0;
     // 价差评分 (0-50): 价差越小越好

@@ -23,14 +23,16 @@ function parseStability(st) {
 }
 /**
  * 计算币种推荐评分
+ * 评分规则：
+ * - 稳定性：稳定=50分，不稳定=0分
+ * - 价差：越低越好 (0-50分)
+ * - 4倍天数：5-15天最佳 (0-50分)
  */
 function calculateScore(item) {
     const { st, spr, md } = item;
-    // 稳定性评分 (0-100)
+    // 稳定性评分 (0-50)
     let stabilityScore = 0;
     if (st.includes('stable'))
-        stabilityScore = 100;
-    else if (st.includes('moderate'))
         stabilityScore = 50;
     else
         stabilityScore = 0;
@@ -53,9 +55,9 @@ function calculateScore(item) {
  * 生成推荐理由
  */
 function getReason(score) {
-    if (score >= 150)
-        return '✨ 稳定性优秀，价差极低，适合稳定套利';
     if (score >= 100)
+        return '✨ 稳定性优秀，价差极低，适合稳定套利';
+    if (score >= 75)
         return '👍 稳定性良好，价差合理';
     if (score >= 50)
         return '⚠️ 稳定性一般，谨慎操作';

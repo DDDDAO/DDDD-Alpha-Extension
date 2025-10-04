@@ -1,5 +1,6 @@
 import { DEFAULT_POINTS_FACTOR, DEFAULT_PRICE_OFFSET_PERCENT } from '../config/defaults.js';
 import { SELECTORS } from '../config/selectors.js';
+import { STORAGE_KEY } from '../config/storageKey.js';
 import { postRuntimeMessage, type RuntimeMessage, type TaskResultMeta } from '../lib/messages.js';
 
 const POLLING_INTERVAL_MS = 1_000;
@@ -7,7 +8,6 @@ const ORDER_PLACEMENT_COOLDOWN_MS = 5_000;
 const LIMIT_STATE_TIMEOUT_MS = 2_000;
 const LIMIT_STATE_POLL_INTERVAL_MS = 100;
 
-const STORAGE_KEY = 'alpha-auto-bot::state';
 const MIN_PRICE_OFFSET_PERCENT = 0;
 const MAX_PRICE_OFFSET_PERCENT = 5;
 

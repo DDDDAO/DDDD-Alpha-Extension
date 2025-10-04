@@ -11,7 +11,17 @@
   },
   "action": {
     "default_popup": "popup.html",
-    "default_title": "Alpha Auto Bot"
+    "default_title": "Alpha Auto Bot",
+    "default_icon": {
+      "16": "logo-16.png",
+      "48": "logo-48.png",
+      "128": "logo-128.png"
+    }
+  },
+  "icons": {
+    "16": "logo-16.png",
+    "48": "logo-48.png",
+    "128": "logo-128.png"
   },
   "options_page": "options.html",
   "content_scripts": [

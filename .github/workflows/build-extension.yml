@@ -1,0 +1,50 @@
+name: Build Extension Package
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build extension assets
+        run: npm run build
+
+      - name: Package extension zip
+        run: npm run zip
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: dddd-alpha-extension
+          path: dddd-alpha-extension.zip
+          if-no-files-found: error
+
+      - name: Publish nightly release
+        uses: ncipollo/release-action@v1
+        with:
+          tag: nightly
+          name: Nightly build
+          prerelease: true
+          allowUpdates: true
+          removeArtifacts: true
+          artifacts: dddd-alpha-extension.zip
+          artifactContentType: application/zip
+          body: |
+            Automated build from main branch commit ${{ github.sha }}.

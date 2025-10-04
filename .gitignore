@@ -3,6 +3,7 @@ node_modules/
 
 # Build output
 extension/dist/
+dddd-alpha-extension.zip
 
 # Editor files
 .DS_Store

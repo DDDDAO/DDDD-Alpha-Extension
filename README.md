@@ -2,12 +2,15 @@
 
 一个智能化的币安 Alpha 刷分助手，集成稳定性看板、自动 VWAP 交易和多账号管理功能。由 DDDDAO 量化社区开发，欢迎进群一起讨论刷分技巧：https://t.me/ddddao2025
 
+
 ### 免责声明
 本扩展仅供教育和个人使用。使用风险自负。作者对使用此工具可能产生的任何交易损失或账户问题概不负责。
 
 本插件仅仅辅助计算挂单价格，并且在网页端模拟人工操作进行填写订单信息并点击下单按钮，不会记录和传输任何敏感数据。
 
 插件完全开源免费，仅为学习交流目的，请使用者自行明确是否会因使用插件违反币安Alpha活动规则。
+
+欢迎任何人在遵循 MIT 许可证条款的前提下下载、修改与扩展本项目，但在再发布或引用衍生作品时请保留对原项目的明确署名。
 
 ## 安装使用
 
@@ -292,3 +295,7 @@ MIT License - free to modify and distribute
 
 ### Disclaimer
 This extension is for educational and personal use only. Use at your own risk. The authors are not responsible for any trading losses or account issues.
+
+## Star History
+
+[![Star History Chart](https://api.star-history.com/svg?repos=DDDDAO/DDDD-Alpha-Extension&type=Date)](https://star-history.com/#DDDDAO/DDDD-Alpha-Extension&Date)

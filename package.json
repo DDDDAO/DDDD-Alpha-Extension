@@ -4,7 +4,10 @@
   "private": true,
   "scripts": {
     "dev": "tsc --watch --pretty",
-    "build": "tsc --pretty",
+    "dev:popup": "vite build --watch",
+    "build": "npm run check && tsc --pretty && vite build",
+    "build:popup": "vite build",
+    "build:ts": "tsc --pretty",
     "test": "vitest",
     "lint": "biome lint .",
     "format": "biome format --write .",
@@ -14,7 +17,16 @@
     "@biomejs/biome": "^2.2.5",
     "@types/chrome": "^0.0.249",
     "@types/node": "^20.11.30",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "@vitejs/plugin-react": "^5.0.4",
     "typescript": "^5.3.3",
+    "vite": "^7.1.9",
     "vitest": "^1.3.1"
+  },
+  "dependencies": {
+    "antd": "^5.27.4",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0"
   }
 }

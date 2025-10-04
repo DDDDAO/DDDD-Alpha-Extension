@@ -2,7 +2,7 @@ import { DEFAULT_POINTS_FACTOR, DEFAULT_PRICE_OFFSET_PERCENT } from '../config/d
 import { SELECTORS } from '../config/selectors.js';
 import { postRuntimeMessage } from '../lib/messages.js';
 const POLLING_INTERVAL_MS = 1_000;
-const ORDER_PLACEMENT_COOLDOWN_MS = 15_000;
+const ORDER_PLACEMENT_COOLDOWN_MS = 5_000;
 const LIMIT_STATE_TIMEOUT_MS = 2_000;
 const LIMIT_STATE_POLL_INTERVAL_MS = 100;
 const STORAGE_KEY = 'alpha-auto-bot::state';
@@ -758,7 +758,9 @@ function formatNumberFixedDecimals(value, fractionDigits) {
     return value.toFixed(fractionDigits);
 }
 function extractAvailableUsdt(orderPanel) {
-    const label = findElementWithExactText(orderPanel, 'Available');
+    const labelEnglish = findElementWithExactText(orderPanel, 'Available');
+    const labelChinese = findElementWithExactText(orderPanel, '可用');
+    const label = labelEnglish ?? labelChinese;
     if (!label) {
         return null;
     }

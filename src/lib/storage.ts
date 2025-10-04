@@ -16,9 +16,6 @@ export interface TaskResultSnapshot {
   successfulTradesToday?: number;
   tokenSymbol?: string;
   firstBalanceToday?: number;
-  totalCostToday?: number;
-  costRatioToday?: number;
-  currentBalanceToday?: number;
 }
 
 export interface SchedulerSettings {
@@ -42,8 +39,6 @@ export interface SchedulerState {
     nextThresholdDelta?: number;
     tradeCount?: number;
     firstBalance?: number;
-    totalCost?: number;
-    currentBalance?: number;
   };
   settings: SchedulerSettings;
 }

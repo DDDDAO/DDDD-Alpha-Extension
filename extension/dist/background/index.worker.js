@@ -1,6 +1,7 @@
-import { DEFAULT_AUTOMATION, DEFAULT_POINTS_TARGET, resolveTargetUrl } from '../config/defaults.js';
+import { DEFAULT_AUTOMATION, DEFAULT_POINTS_TARGET } from '../config/defaults.js';
 import { getSchedulerState, updateSchedulerState } from '../lib/storage.js';
-import { getTab, locateOrCreateTab } from '../lib/tabs.js';
+import { getTab } from '../lib/tabs.js';
+const BINANCE_ALPHA_PATTERN = /^https:\/\/www\.binance\.com\/(?:[a-z]{2}(?:-[A-Z]{2})?\/)alpha\/bsc\/(0x[a-fA-F0-9]{40})(?:[/?#]|$)/u;
 const { alarmName, intervalMinutes } = DEFAULT_AUTOMATION;
 const MIN_ALARM_INTERVAL_MINUTES = 0.5;
 const INITIAL_DELAY_MINUTES = 0.01;
@@ -35,39 +36,19 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
             const existingFirstBalance = isSameDay && typeof previousDaily?.firstBalance === 'number'
                 ? previousDaily.firstBalance
                 : undefined;
-            const _existingCurrentBalance = isSameDay && typeof previousDaily?.currentBalance === 'number'
-                ? previousDaily.currentBalance
-                : undefined;
             const existingTotal = isSameDay && typeof previousDaily?.total === 'number' ? previousDaily.total : 0;
             const existingTrades = isSameDay && typeof previousDaily?.tradeCount === 'number' ? previousDaily.tradeCount : 0;
-            const existingTotalCost = isSameDay && typeof previousDaily?.totalCost === 'number' ? previousDaily.totalCost : 0;
             const existingAlphaPoints = isSameDay && typeof previousDaily?.alphaPoints === 'number' ? previousDaily.alphaPoints : 0;
             const existingNextThresholdDelta = isSameDay && typeof previousDaily?.nextThresholdDelta === 'number'
                 ? previousDaily.nextThresholdDelta
                 : 2;
             let nextFirstBalance = existingFirstBalance;
-            let nextCurrentBalance = currentBalanceValue;
-            let nextTotalCost = existingTotalCost;
             if (!isSameDay) {
                 nextFirstBalance = currentBalanceValue;
-                nextCurrentBalance = currentBalanceValue;
-                nextTotalCost = 0;
             }
             else if (nextFirstBalance === undefined) {
                 nextFirstBalance = currentBalanceValue;
             }
-            if (typeof nextFirstBalance === 'number' &&
-                Number.isFinite(nextFirstBalance) &&
-                typeof nextCurrentBalance === 'number' &&
-                Number.isFinite(nextCurrentBalance)) {
-                const difference = nextFirstBalance - nextCurrentBalance;
-                nextTotalCost = difference > 0 ? difference : 0;
-            }
-            const costRatio = typeof nextFirstBalance === 'number' &&
-                Number.isFinite(nextFirstBalance) &&
-                nextFirstBalance > 0
-                ? nextTotalCost / nextFirstBalance
-                : undefined;
             const nextDaily = {
                 date: dateKey,
                 total: existingTotal,
@@ -75,8 +56,6 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
                 nextThresholdDelta: existingNextThresholdDelta,
                 tradeCount: existingTrades,
                 firstBalance: nextFirstBalance,
-                totalCost: nextTotalCost,
-                currentBalance: nextCurrentBalance,
             };
             return {
                 ...state,
@@ -86,9 +65,6 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
                     ? {
                         ...state.lastResult,
                         firstBalanceToday: nextDaily.firstBalance,
-                        totalCostToday: nextDaily.totalCost,
-                        costRatioToday: costRatio,
-                        currentBalanceToday: nextDaily.currentBalance,
                     }
                     : undefined,
             };
@@ -130,40 +106,18 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
             const existingFirstBalance = isSameDay && typeof previousDaily?.firstBalance === 'number'
                 ? previousDaily.firstBalance
                 : undefined;
-            const existingTotalCost = isSameDay && typeof previousDaily?.totalCost === 'number' ? previousDaily.totalCost : 0;
-            const existingCurrentBalance = isSameDay && typeof previousDaily?.currentBalance === 'number'
-                ? previousDaily.currentBalance
-                : undefined;
             let nextFirstBalance = existingFirstBalance;
-            let nextCurrentBalance = existingCurrentBalance;
-            let nextTotalCost = existingTotalCost;
             if (currentBalanceValue !== undefined) {
                 if (!isSameDay) {
                     nextFirstBalance = currentBalanceValue;
-                    nextTotalCost = 0;
                 }
                 else if (nextFirstBalance === undefined) {
                     nextFirstBalance = currentBalanceValue;
                 }
-                nextCurrentBalance = currentBalanceValue;
             }
             else if (!isSameDay) {
                 nextFirstBalance = undefined;
-                nextCurrentBalance = undefined;
-                nextTotalCost = 0;
             }
-            if (typeof nextFirstBalance === 'number' &&
-                Number.isFinite(nextFirstBalance) &&
-                typeof nextCurrentBalance === 'number' &&
-                Number.isFinite(nextCurrentBalance)) {
-                const difference = nextFirstBalance - nextCurrentBalance;
-                nextTotalCost = difference > 0 ? difference : 0;
-            }
-            const costRatio = typeof nextFirstBalance === 'number' &&
-                Number.isFinite(nextFirstBalance) &&
-                nextFirstBalance > 0
-                ? nextTotalCost / nextFirstBalance
-                : undefined;
             const { points: alphaPoints, nextThresholdDelta } = calculateAlphaPointStats(updatedTotal);
             const previousTokenSymbol = state.tokenSymbol ?? state.lastResult?.tokenSymbol;
             const resolvedTokenSymbol = tokenSymbol ?? previousTokenSymbol;
@@ -190,8 +144,6 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
                 nextThresholdDelta,
                 tradeCount: updatedTrades,
                 firstBalance: nextFirstBalance,
-                totalCost: nextTotalCost,
-                currentBalance: nextCurrentBalance,
             };
             return {
                 ...state,
@@ -212,9 +164,6 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
                     successfulTradesToday: nextDaily.tradeCount,
                     tokenSymbol: resolvedTokenSymbol,
                     firstBalanceToday: nextDaily.firstBalance,
-                    totalCostToday: nextDaily.totalCost,
-                    costRatioToday: costRatio,
-                    currentBalanceToday: nextDaily.currentBalance,
                 },
             };
         });
@@ -327,22 +276,23 @@ async function runAutomationCycle(options = {}) {
         const effectiveToken = sanitizeTokenAddress(tokenAddressOverride) ??
             state.settings?.tokenAddress ??
             DEFAULT_AUTOMATION.tokenAddress;
-        const targetUrl = resolveTargetUrl(effectiveToken);
         let tab;
+        // If a specific tab ID is provided, use it
         if (typeof targetTabId === 'number' && Number.isFinite(targetTabId)) {
             const existingTab = await getTab(targetTabId).catch(() => undefined);
             if (existingTab?.id !== undefined) {
                 const existingToken = typeof existingTab.url === 'string' ? sanitizeTokenAddress(existingTab.url) : undefined;
-                if (!existingToken || existingToken === effectiveToken) {
+                if (existingToken === effectiveToken) {
                     tab = existingTab;
                 }
             }
         }
+        // If no tab ID provided or the provided tab is invalid, find an active Binance Alpha tab
         if (!tab) {
-            tab = await locateOrCreateTab({ url: targetUrl });
+            tab = await findActiveBinanceAlphaTab(effectiveToken);
         }
         if (!tab?.id) {
-            throw new Error('Failed to locate or open the automation tab.');
+            throw new Error('No valid Binance Alpha tab found. Please open the token page in your browser.');
         }
         const runtimeMessage = trigger === 'manual' ? { type: 'RUN_TASK_ONCE' } : { type: 'RUN_TASK' };
         await sendMessageToTab(tab.id, runtimeMessage);
@@ -373,9 +323,10 @@ async function handleControlStart(tokenAddress, tabId) {
     });
     await ensureAlarm();
     const sanitizedToken = sanitizeTokenAddress(tokenAddress);
+    const sanitizedTabId = sanitizeTabId(tabId);
     void scheduleImmediateRun({
         tokenAddressOverride: sanitizedToken,
-        targetTabId: sanitizeTabId(tabId),
+        targetTabId: sanitizedTabId,
     });
 }
 async function handleControlStop() {
@@ -390,6 +341,30 @@ async function clearAutomationAlarm() {
     await new Promise((resolve) => {
         chrome.alarms.clear(alarmName, () => resolve());
     });
+}
+async function findActiveBinanceAlphaTab(tokenAddress) {
+    const allTabs = await chrome.tabs.query({});
+    // First, try to find an active tab in the current window with matching token
+    const activeTabs = allTabs.filter((tab) => tab.active && tab.url);
+    for (const tab of activeTabs) {
+        if (!tab.url)
+            continue;
+        const match = tab.url.match(BINANCE_ALPHA_PATTERN);
+        if (match && match[1].toLowerCase() === tokenAddress.toLowerCase()) {
+            return tab;
+        }
+    }
+    // Second, try to find any tab with matching token (prioritize current window)
+    const currentWindowTabs = allTabs.filter((tab) => tab.url);
+    for (const tab of currentWindowTabs) {
+        if (!tab.url)
+            continue;
+        const match = tab.url.match(BINANCE_ALPHA_PATTERN);
+        if (match && match[1].toLowerCase() === tokenAddress.toLowerCase()) {
+            return tab;
+        }
+    }
+    return undefined;
 }
 function sanitizeTokenAddress(value) {
     if (!value) {

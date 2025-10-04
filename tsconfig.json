@@ -6,6 +6,7 @@
     "moduleResolution": "Bundler",
     "outDir": "extension/dist",
     "rootDir": "src",
+    "jsx": "react-jsx",
     "strict": true,
     "noImplicitAny": true,
     "esModuleInterop": true,
@@ -15,5 +16,5 @@
     "types": ["chrome"]
   },
   "include": ["src"],
-  "exclude": ["node_modules", "extension/dist"]
+  "exclude": ["node_modules", "extension/dist", "src/popup"]
 }

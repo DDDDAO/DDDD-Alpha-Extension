@@ -9,31 +9,38 @@ Alpha Auto Bot is a Chrome Manifest V3 extension that automates VWAP (Volume-Wei
 ## Commands
 
 ### Development
-- `npm run dev` — Start TypeScript watch mode for incremental compilation during development
-- `npm run build` — Compile TypeScript to JavaScript, output to `extension/dist/`
+- `npm run dev` — Start TypeScript watch mode for background/content scripts
+- `npm run dev:popup` — Start Vite watch mode for React popup (builds to `extension/dist/popup/`)
+- `npm run build` — Full build: lint + check + compile TS + build React popup
+- `npm run build:ts` — Compile TypeScript only (background/content scripts to `extension/dist/`)
+- `npm run build:popup` — Build React popup only (to `extension/dist/popup/`)
 - `npm run test` — Run Vitest unit tests (environment: jsdom, globals enabled)
-- `npm run lint` — Run ESLint with TypeScript + Prettier rules
+- `npm run lint` — Run Biome linter
+- `npm run format` — Format code with Biome
+- `npm run check` — Lint and format with Biome (runs before build)
 
 ### Testing a single unit test
 - `npm run test -- path/to/test.spec.ts` — Run a specific test file
 
 ### Extension Development Workflow
-1. Run `npm run build` to compile TypeScript to `extension/dist/`
+1. Run `npm run build` to compile all code (TypeScript + React popup)
 2. Load `extension/` directory in Chrome at `chrome://extensions` (enable Developer mode)
 3. After code changes, run `npm run build` again and click "Reload" in Chrome Extensions page
+4. For faster popup-only development: run `npm run dev:popup` in one terminal, then reload extension after changes
 
 **IMPORTANT**: Always run `npm run build` after every code update to ensure the extension uses the latest compiled code.
 
 ## Architecture
 
 ### Entry Points
-- **Background Service Worker** (`src/background/index.worker.ts`): Manages scheduling via Chrome alarms (every 30s when enabled), handles start/stop/manual-refresh messages, calculates alpha points and daily metrics, persists state to Chrome storage
+- **Background Service Worker** (`src/background/index.worker.ts`): Manages scheduling via Chrome alarms (every 30s when enabled), handles start/stop messages, calculates alpha points and daily metrics, persists state to Chrome storage
 - **Content Script** (`src/content/main.content.ts`): Injected into Binance pages, executes VWAP calculations from limit trade history, automates order placement with reverse orders, polls every 1 second when automation is enabled
-- **Popup UI** (`extension/popup.html` + `extension/popup.js`): User controls for starting/stopping automation, displays current metrics and errors
+- **Popup UI** (`src/popup/Popup.tsx` + `extension/popup.html`): React-based UI for starting/stopping automation, displays current metrics and errors. Uses controlled inputs to prevent reloading during state updates.
 
 ### Key Modules
 - **`src/lib/storage.ts`**: Chrome storage abstraction for scheduler state (last run, errors, daily metrics, settings). State shape includes `isEnabled`, `isRunning`, `dailyBuyVolume`, `lastResult`, `settings` (priceOffsetPercent, tokenAddress, pointsFactor, pointsTarget)
-- **`src/lib/messages.ts`**: Runtime message types for background ↔ content script communication (`RUN_TASK`, `TASK_COMPLETE`, `TASK_ERROR`, `CONTROL_START`, `CONTROL_STOP`, `MANUAL_REFRESH`)
+- **`src/lib/messages.ts`**: Runtime message types for background ↔ content script communication (`RUN_TASK`, `TASK_COMPLETE`, `TASK_ERROR`, `CONTROL_START`, `CONTROL_STOP`)
+- **`src/popup/Popup.tsx`**: React popup component with local state for input fields to prevent re-renders from disrupting user input. Uses `useCallback` for memoization and `useId` for accessible form labels.
 - **`src/lib/tabs.ts`**: Tab management utilities for locating or creating Binance Alpha tabs
 - **`src/config/selectors.ts`**: DOM selectors for Binance UI elements (trade history panel, token symbol, etc.). Selectors may drift with site updates
 - **`src/config/defaults.ts`**: Default token address, alarm interval (0.5 min), price offset (0.01%), points factor (1), points target (15)
@@ -105,3 +112,4 @@ Alpha Auto Bot is a Chrome Manifest V3 extension that automates VWAP (Volume-Wei
 - Daily metrics reset at UTC day boundary (detected by comparing `date` field)
 - Storage listeners in both background and content scripts for real-time sync
 - always lint and format and check before npm run build
+- always run npm build after code update

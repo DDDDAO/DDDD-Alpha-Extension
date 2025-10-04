@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>稳定性看板 - Alpha Auto Bot</title>
+  <link rel="stylesheet" href="stability.css">
+</head>
+<body>
+  <div class="container">
+    <!-- Header -->
+    <div class="header">
+      <div class="header-title">
+        <span class="icon">📊</span>
+        <h1>稳定性看板</h1>
+      </div>
+      <div class="header-actions">
+        <button id="refreshBtn" class="btn-icon" title="刷新数据">
+          <span>🔄</span>
+        </button>
+        <button id="backBtn" class="btn-icon" title="返回主页">
+          <span>🏠</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Loading State -->
+    <div id="loading" class="loading">
+      <div class="spinner"></div>
+      <p>正在加载数据...</p>
+    </div>
+
+    <!-- Error State -->
+    <div id="error" class="error" style="display: none;">
+      <p id="errorMessage"></p>
+      <button id="retryBtn" class="btn-primary">重试</button>
+    </div>
+
+    <!-- Main Content -->
+    <div id="content" style="display: none;">
+      <!-- Top Recommendations -->
+      <section class="section">
+        <h2 class="section-title">
+          <span>🏆</span>
+          Top 3 推荐
+        </h2>
+        <div id="recommendations" class="cards-grid"></div>
+      </section>
+
+      <!-- Full Table -->
+      <section class="section">
+        <div class="section-header">
+          <h2 class="section-title">
+            <span>📋</span>
+            完整列表
+          </h2>
+          <div id="lastUpdated" class="last-updated"></div>
+        </div>
+        <div class="table-container">
+          <table>
+            <thead>
+              <tr>
+                <th>排名</th>
+                <th>币种</th>
+                <th>价格</th>
+                <th>稳定性</th>
+                <th>价差基点</th>
+                <th>4倍天数</th>
+                <th>评分</th>
+              </tr>
+            </thead>
+            <tbody id="tableBody"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- Info Section -->
+      <section class="section info-section">
+        <h3 class="info-title">
+          <span>ℹ️</span>
+          评分说明
+        </h3>
+        <div class="info-content">
+          <div class="info-item">
+            <span class="info-label">数据来源：</span>
+            <a href="https://alpha123.uk/zh/stability/" target="_blank" style="font-weight: 600;">alpha123.uk</a>
+            <span style="color: #999; font-size: 12px; margin-left: 8px;">（每8秒自动更新）</span>
+          </div>
+          <div class="info-item">
+            <span class="info-label">稳定性：</span>
+            <span>稳定=50分，不稳定=0分</span>
+          </div>
+          <div class="info-item">
+            <span class="info-label">价差：</span>
+            <span>越低越好，0基点=50分，0.5基点以上=0分</span>
+          </div>
+          <div class="info-item">
+            <span class="info-label">4倍天数：</span>
+            <span>5-15天最佳=50分，其他递减</span>
+          </div>
+        </div>
+        <div class="disclaimer">
+          ⚠️ 免责声明：本数据仅供参考，不构成投资建议。投资有风险，请谨慎决策。
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <script src="dist/stability/stability.js" type="module"></script>
+</body>
+</html>

@@ -4,6 +4,7 @@ import {
   DEFAULT_POINTS_TARGET,
   DEFAULT_PRICE_OFFSET_PERCENT,
 } from '../config/defaults.js';
+import { STORAGE_KEY } from '../config/storageKey.js';
 
 export interface TaskResultSnapshot {
   timestamp: string;
@@ -43,7 +44,6 @@ export interface SchedulerState {
   settings: SchedulerSettings;
 }
 
-const STORAGE_KEY = 'dddd-alpha-extension::state';
 const DEFAULT_SETTINGS: SchedulerSettings = {
   priceOffsetPercent: DEFAULT_PRICE_OFFSET_PERCENT,
   tokenAddress: DEFAULT_AUTOMATION.tokenAddress,

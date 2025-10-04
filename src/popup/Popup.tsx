@@ -21,11 +21,11 @@ import {
   Typography,
 } from 'antd';
 import React, { useCallback, useEffect, useId, useRef, useState } from 'react';
+import { STORAGE_KEY } from '../config/storageKey.js';
 import type { SchedulerState } from '../lib/storage';
 
 const { Text, Link, Title } = Typography;
 
-const STORAGE_KEY = 'alpha-auto-bot::state';
 const DEFAULT_PRICE_OFFSET_PERCENT = 0.01;
 const DEFAULT_POINTS_FACTOR = 1;
 const DEFAULT_POINTS_TARGET = 15;
@@ -860,6 +860,25 @@ export function Popup(): React.ReactElement {
           </Row>
         </Card>
       )}
+
+      <div style={{ textAlign: 'center', marginTop: 16 }}>
+        <Link
+          href="https://web3.binance.com/referral?ref=DDDDAO"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          币安钱包交易，手续费9折链接
+        </Link>
+      </div>
+      <div style={{ textAlign: 'center', marginTop: 16 }}>
+        <Link
+          href="https://www.binance.com/join?ref=DDDDAO"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          注册币安
+        </Link>
+      </div>
 
       <div
         style={{

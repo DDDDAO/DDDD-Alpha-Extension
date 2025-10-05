@@ -24,7 +24,7 @@ import {
   Tooltip,
   Typography,
 } from 'antd';
-import React, { useCallback, useEffect, useId, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { STORAGE_KEY } from '../config/storageKey.js';
 import type { ProcessedAirdrop } from '../lib/airdrop.js';
 import { AIRDROP_STORAGE_KEY, processAirdropApiResponse } from '../lib/airdrop.js';
@@ -43,6 +43,9 @@ const BINANCE_ALPHA_PATTERN =
 const DEFAULT_BINANCE_ALPHA_URL =
   'https://www.binance.com/zh-CN/alpha/bsc/0xe6df05ce8c8301223373cf5b969afcb1498c5528';
 
+const TOKEN_LIST_URL =
+  'https://www.binance.com/bapi/defi/v1/public/wallet-direct/buw/wallet/cex/alpha/all/token/list';
+
 // 稳定性相关常量
 const STABILITY_FEED_URL = 'https://alpha123.uk/stability/stability_feed_v2.json';
 const STABILITY_UPDATE_INTERVAL = 30000; // 30秒更新一次
@@ -51,17 +54,76 @@ const MAX_SPREAD_THRESHOLD = 2.0; // 价差基点阈值
 // 空投提醒相关常量
 const AIRDROP_API_URL = 'https://alpha123.uk/api/data';
 const AIRDROP_UPDATE_INTERVAL = 60000; // 60秒更新一次（popup打开时）
+const TOKEN_DIRECTORY_UPDATE_INTERVAL = 10 * 60 * 1000; // 10分钟更新一次
 
-// 币种地址映射
-const COIN_ADDRESSES: Record<string, string> = {
-  AOP: '0xd5df4d260d7a0145f655bcbf3b398076f21016c7',
-  ALEO: '0x6cfffa5bfd4277a04d83307feedfe2d18d944dd2',
-  NUMI: '0xc61eb549acf4a05ed6e3fe0966f5e213b23541ce',
-  ZEUS: '0xa2be3e48170a60119b5f0400c65f65f3158fbeee',
-  KOGE: '0xe6df05ce8c8301223373cf5b969afcb1498c5528',
-  STAR: '0x8fce7206e3043dd360f115afa956ee31b90b787c',
-  POP: '0xa3cfb853339b77f385b994799b015cb04b208fe6',
-  FROGGIE: '0xa45f5eb48cecd034751651aeeda6271bd5df8888',
+interface TokenDirectoryEntry {
+  symbol: string;
+  contractAddress: string;
+  iconUrl: string | null;
+  mulPoint: number | null;
+}
+
+interface TokenListItem {
+  symbol?: string | null;
+  contractAddress?: string | null;
+  iconUrl?: string | null;
+  mulPoint?: number | string | null;
+}
+
+interface TokenListResponse {
+  code?: string;
+  data?: TokenListItem[] | null;
+}
+
+const FALLBACK_TOKEN_DIRECTORY: Record<string, TokenDirectoryEntry> = {
+  AOP: {
+    symbol: 'AOP',
+    contractAddress: '0xd5df4d260d7a0145f655bcbf3b398076f21016c7',
+    iconUrl: null,
+    mulPoint: null,
+  },
+  ALEO: {
+    symbol: 'ALEO',
+    contractAddress: '0x6cfffa5bfd4277a04d83307feedfe2d18d944dd2',
+    iconUrl: null,
+    mulPoint: null,
+  },
+  NUMI: {
+    symbol: 'NUMI',
+    contractAddress: '0xc61eb549acf4a05ed6e3fe0966f5e213b23541ce',
+    iconUrl: null,
+    mulPoint: null,
+  },
+  ZEUS: {
+    symbol: 'ZEUS',
+    contractAddress: '0xa2be3e48170a60119b5f0400c65f65f3158fbeee',
+    iconUrl: null,
+    mulPoint: null,
+  },
+  KOGE: {
+    symbol: 'KOGE',
+    contractAddress: '0xe6df05ce8c8301223373cf5b969afcb1498c5528',
+    iconUrl: null,
+    mulPoint: null,
+  },
+  STAR: {
+    symbol: 'STAR',
+    contractAddress: '0x8fce7206e3043dd360f115afa956ee31b90b787c',
+    iconUrl: null,
+    mulPoint: null,
+  },
+  POP: {
+    symbol: 'POP',
+    contractAddress: '0xa3cfb853339b77f385b994799b015cb04b208fe6',
+    iconUrl: null,
+    mulPoint: null,
+  },
+  FROGGIE: {
+    symbol: 'FROGGIE',
+    contractAddress: '0xa45f5eb48cecd034751651aeeda6271bd5df8888',
+    iconUrl: null,
+    mulPoint: null,
+  },
 };
 
 interface StabilityItem {
@@ -88,6 +150,9 @@ interface ActiveTabContext {
 
 export function Popup(): React.ReactElement {
   const [state, setState] = useState<SchedulerState | null>(null);
+  const [tokenDirectory, setTokenDirectory] = useState<Record<string, TokenDirectoryEntry>>({
+    ...FALLBACK_TOKEN_DIRECTORY,
+  });
   const [activeTab, setActiveTab] = useState<ActiveTabContext>({
     url: null,
     tokenAddress: null,
@@ -113,6 +178,16 @@ export function Popup(): React.ReactElement {
   const spreadId = useId();
   const pointsFactorId = useId();
   const pointsTargetId = useId();
+
+  const normalizedActiveTokenAddress = activeTab.tokenAddress?.toLowerCase() ?? null;
+  const tokenEntries = useMemo(() => Object.values(tokenDirectory), [tokenDirectory]);
+  const tokenInfoByAddress = useMemo(
+    () =>
+      normalizedActiveTokenAddress
+        ? tokenEntries.find((entry) => entry.contractAddress === normalizedActiveTokenAddress)
+        : undefined,
+    [normalizedActiveTokenAddress, tokenEntries],
+  );
 
   const requestTokenSymbolFromTab = useCallback(async (tabId: number): Promise<string | null> => {
     return new Promise((resolve) => {
@@ -147,6 +222,64 @@ export function Popup(): React.ReactElement {
     },
     [],
   );
+
+  const fetchTokenDirectory = useCallback(async (): Promise<void> => {
+    try {
+      const response = await fetch(TOKEN_LIST_URL);
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const payload: TokenListResponse = await response.json();
+      if (payload.code !== '000000' || !Array.isArray(payload.data)) {
+        throw new Error('Unexpected token list response structure');
+      }
+
+      const nextDirectory: Record<string, TokenDirectoryEntry> = {
+        ...FALLBACK_TOKEN_DIRECTORY,
+      };
+
+      for (const token of payload.data) {
+        const rawSymbol = typeof token.symbol === 'string' ? token.symbol.trim() : '';
+        const rawAddress =
+          typeof token.contractAddress === 'string' ? token.contractAddress.trim() : '';
+
+        if (rawSymbol.length === 0 || !/^0x[a-fA-F0-9]{40}$/u.test(rawAddress)) {
+          continue;
+        }
+
+        const normalizedSymbol = rawSymbol.toUpperCase();
+        const contractAddress = rawAddress.toLowerCase();
+        const iconUrl =
+          typeof token.iconUrl === 'string' && token.iconUrl.trim().length > 0
+            ? token.iconUrl.trim()
+            : null;
+
+        let mulPoint: number | null = null;
+        if (typeof token.mulPoint === 'number') {
+          mulPoint = Number.isFinite(token.mulPoint) ? clampPointsFactor(token.mulPoint) : null;
+        } else if (typeof token.mulPoint === 'string') {
+          const parsed = Number(token.mulPoint.trim());
+          mulPoint = Number.isFinite(parsed) ? clampPointsFactor(parsed) : null;
+        }
+
+        if (mulPoint !== null && mulPoint <= 0) {
+          mulPoint = null;
+        }
+
+        nextDirectory[normalizedSymbol] = {
+          symbol: normalizedSymbol,
+          contractAddress,
+          iconUrl,
+          mulPoint,
+        };
+      }
+
+      setTokenDirectory(nextDirectory);
+    } catch (error) {
+      console.error('Failed to fetch token list:', error);
+    }
+  }, []);
 
   // 获取稳定币种数据
   const fetchStableCoins = useCallback(async (): Promise<void> => {
@@ -311,6 +444,7 @@ export function Popup(): React.ReactElement {
     void refreshActiveTab();
     void fetchStableCoins(); // 初始加载稳定币种
     void fetchAirdrops(); // 初始加载空投数据
+    void fetchTokenDirectory();
 
     // Listen for storage changes
     const handleStorageChange = (
@@ -340,32 +474,121 @@ export function Popup(): React.ReactElement {
       void fetchAirdrops();
     }, AIRDROP_UPDATE_INTERVAL);
 
+    const tokenDirectoryInterval = setInterval(() => {
+      void fetchTokenDirectory();
+    }, TOKEN_DIRECTORY_UPDATE_INTERVAL);
+
     return () => {
       chrome.storage.onChanged.removeListener(handleStorageChange);
       clearInterval(interval);
       clearInterval(stabilityInterval);
       clearInterval(airdropInterval);
+      clearInterval(tokenDirectoryInterval);
     };
-  }, [loadState, refreshActiveTab, fetchStableCoins, fetchAirdrops]);
+  }, [loadState, refreshActiveTab, fetchStableCoins, fetchAirdrops, fetchTokenDirectory]);
+
+  const storedTokenAddress = getTokenAddress(state);
+  const resolvedSymbolCandidate =
+    activeTab.tokenAddress === storedTokenAddress
+      ? (activeTab.tokenSymbol ?? state?.tokenSymbol ?? state?.lastResult?.tokenSymbol)
+      : activeTab.tokenSymbol;
+  const normalizedResolvedSymbol =
+    typeof resolvedSymbolCandidate === 'string' && resolvedSymbolCandidate.trim().length > 0
+      ? resolvedSymbolCandidate.trim().toUpperCase()
+      : null;
+  const tokenInfoBySymbol =
+    normalizedResolvedSymbol !== null ? tokenDirectory[normalizedResolvedSymbol] : undefined;
+  const resolvedTokenInfo = tokenInfoByAddress ?? tokenInfoBySymbol;
+  const resolvedSymbolDisplayRaw =
+    resolvedTokenInfo?.symbol ?? normalizedResolvedSymbol ?? (resolvedSymbolCandidate ?? '').trim();
+  const resolvedSymbolDisplay =
+    resolvedSymbolDisplayRaw && resolvedSymbolDisplayRaw.length > 0
+      ? resolvedSymbolDisplayRaw
+      : '—';
+
+  const rawPointsFactorLockValue = resolvedTokenInfo?.mulPoint ?? null;
+  const sanitizedPointsFactorLockValue =
+    typeof rawPointsFactorLockValue === 'number' &&
+    Number.isFinite(rawPointsFactorLockValue) &&
+    rawPointsFactorLockValue > 0
+      ? clampPointsFactor(rawPointsFactorLockValue)
+      : null;
+  const isPointsFactorLocked = sanitizedPointsFactorLockValue !== null;
+
+  const persistSchedulerSettings = useCallback(
+    async (settingsPatch: {
+      priceOffsetPercent?: number;
+      pointsFactor?: number;
+      pointsTarget?: number;
+    }): Promise<void> => {
+      const baseState = state ?? {
+        isRunning: false,
+        isEnabled: false,
+        settings: {
+          priceOffsetPercent: DEFAULT_PRICE_OFFSET_PERCENT,
+          tokenAddress: BUILTIN_DEFAULT_TOKEN_ADDRESS,
+          pointsFactor: DEFAULT_POINTS_FACTOR,
+          pointsTarget: DEFAULT_POINTS_TARGET,
+        },
+      };
+
+      const baseSettings = baseState.settings ?? {
+        priceOffsetPercent: DEFAULT_PRICE_OFFSET_PERCENT,
+        tokenAddress: BUILTIN_DEFAULT_TOKEN_ADDRESS,
+        pointsFactor: DEFAULT_POINTS_FACTOR,
+        pointsTarget: DEFAULT_POINTS_TARGET,
+      };
+
+      const nextState = {
+        ...baseState,
+        settings: {
+          priceOffsetPercent: baseSettings.priceOffsetPercent,
+          tokenAddress: baseSettings.tokenAddress,
+          pointsFactor: baseSettings.pointsFactor,
+          pointsTarget: baseSettings.pointsTarget,
+          ...settingsPatch,
+        },
+      };
+
+      await chrome.storage.local.set({ [STORAGE_KEY]: nextState });
+      setState(nextState);
+    },
+    [state],
+  );
 
   // Sync local input values with state, but not during active editing
   useEffect(() => {
-    if (state) {
-      const offset = getPriceOffsetPercent(state);
-      const factor = getPointsFactor(state);
-      const target = getPointsTarget(state);
+    const offset = getPriceOffsetPercent(state);
+    const factor = getPointsFactor(state);
+    const target = getPointsTarget(state);
 
-      if (!isEditingPriceOffset.current) {
-        setLocalPriceOffset(formatSpreadInputValue(offset));
-      }
-      if (!isEditingPointsFactor.current) {
-        setLocalPointsFactor(String(factor));
-      }
-      if (!isEditingPointsTarget.current) {
-        setLocalPointsTarget(String(target));
-      }
+    if (!isEditingPriceOffset.current) {
+      setLocalPriceOffset(formatSpreadInputValue(offset));
     }
-  }, [state]);
+
+    if (isPointsFactorLocked && sanitizedPointsFactorLockValue !== null) {
+      setLocalPointsFactor(String(sanitizedPointsFactorLockValue));
+    } else if (!isEditingPointsFactor.current) {
+      setLocalPointsFactor(String(factor));
+    }
+
+    if (!isEditingPointsTarget.current) {
+      setLocalPointsTarget(String(target));
+    }
+  }, [state, isPointsFactorLocked, sanitizedPointsFactorLockValue]);
+
+  useEffect(() => {
+    if (!isPointsFactorLocked || sanitizedPointsFactorLockValue === null) {
+      return;
+    }
+
+    const currentValue = getPointsFactor(state);
+    if (!pointsFactorValuesDiffer(currentValue, sanitizedPointsFactorLockValue)) {
+      return;
+    }
+
+    void persistSchedulerSettings({ pointsFactor: sanitizedPointsFactorLockValue });
+  }, [isPointsFactorLocked, sanitizedPointsFactorLockValue, state, persistSchedulerSettings]);
 
   async function handleControlMessage(type: string, payload?: unknown): Promise<void> {
     setControlsBusy(true);
@@ -433,6 +656,9 @@ export function Popup(): React.ReactElement {
 
   async function handlePointsFactorChange(value: string): Promise<void> {
     isEditingPointsFactor.current = false;
+    if (isPointsFactorLocked) {
+      return;
+    }
     const rawValue = Number.parseFloat(value);
     if (Number.isNaN(rawValue)) {
       return;
@@ -467,44 +693,6 @@ export function Popup(): React.ReactElement {
     await persistSchedulerSettings({ pointsTarget: sanitizedValue });
   }
 
-  async function persistSchedulerSettings(settingsPatch: {
-    priceOffsetPercent?: number;
-    pointsFactor?: number;
-    pointsTarget?: number;
-  }): Promise<void> {
-    const baseState = state ?? {
-      isRunning: false,
-      isEnabled: false,
-      settings: {
-        priceOffsetPercent: DEFAULT_PRICE_OFFSET_PERCENT,
-        tokenAddress: BUILTIN_DEFAULT_TOKEN_ADDRESS,
-        pointsFactor: DEFAULT_POINTS_FACTOR,
-        pointsTarget: DEFAULT_POINTS_TARGET,
-      },
-    };
-
-    const baseSettings = baseState.settings ?? {
-      priceOffsetPercent: DEFAULT_PRICE_OFFSET_PERCENT,
-      tokenAddress: BUILTIN_DEFAULT_TOKEN_ADDRESS,
-      pointsFactor: DEFAULT_POINTS_FACTOR,
-      pointsTarget: DEFAULT_POINTS_TARGET,
-    };
-
-    const nextState = {
-      ...baseState,
-      settings: {
-        priceOffsetPercent: baseSettings.priceOffsetPercent,
-        tokenAddress: baseSettings.tokenAddress,
-        pointsFactor: baseSettings.pointsFactor,
-        pointsTarget: baseSettings.pointsTarget,
-        ...settingsPatch,
-      },
-    };
-
-    await chrome.storage.local.set({ [STORAGE_KEY]: nextState });
-    setState(nextState);
-  }
-
   const isRunning = state?.isRunning ?? false;
   const isEnabled = state?.isEnabled ?? false;
   const canOperate = activeTab.isSupported;
@@ -523,12 +711,6 @@ export function Popup(): React.ReactElement {
   } else if (typeof snapshot?.alphaPointsToday === 'number') {
     todaysAlphaPoints = snapshot.alphaPointsToday;
   }
-
-  const storedTokenAddress = getTokenAddress(state);
-  const resolvedSymbol =
-    activeTab.tokenAddress === storedTokenAddress
-      ? (activeTab.tokenSymbol ?? state?.tokenSymbol ?? state?.lastResult?.tokenSymbol)
-      : activeTab.tokenSymbol;
 
   function calculateTotalCost(): number | undefined {
     const firstBalance =
@@ -569,6 +751,37 @@ export function Popup(): React.ReactElement {
 
     return undefined;
   }
+
+  const openUrlInActiveTab = useCallback(
+    (targetUrl: string): void => {
+      if (typeof targetUrl !== 'string' || targetUrl.length === 0) {
+        return;
+      }
+
+      const updateTabUrl = (tabId: number | undefined): void => {
+        if (typeof tabId !== 'number') {
+          return;
+        }
+
+        chrome.tabs.update(tabId, { url: targetUrl }, () => {
+          if (chrome.runtime.lastError) {
+            console.warn('Failed to update tab URL:', chrome.runtime.lastError.message);
+          }
+        });
+      };
+
+      if (typeof activeTab.tabId === 'number') {
+        updateTabUrl(activeTab.tabId);
+        return;
+      }
+
+      chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+        const [currentTab] = tabs;
+        updateTabUrl(typeof currentTab?.id === 'number' ? currentTab.id : undefined);
+      });
+    },
+    [activeTab.tabId],
+  );
 
   function handleOpenStability(): void {
     chrome.tabs.create({ url: chrome.runtime.getURL('stability.html') });
@@ -661,27 +874,45 @@ export function Popup(): React.ReactElement {
               <List
                 size="small"
                 dataSource={stableCoins}
-                renderItem={(item) => (
-                  <List.Item style={{ padding: '4px 0', borderBottom: 'none' }}>
-                    <Space size="small" style={{ width: '100%', justifyContent: 'space-between' }}>
-                      <Space size="small">
-                        {(() => {
-                          const coinSymbol = item.n.replace('/USDT', '');
-                          const address = COIN_ADDRESSES[coinSymbol];
-                          const url = address
-                            ? `https://www.binance.com/zh-CN/alpha/bsc/${address}`
-                            : null;
+                renderItem={(item) => {
+                  const coinSymbol = item.n.replace('/USDT', '').trim();
+                  const normalizedSymbol = coinSymbol.toUpperCase();
+                  const tokenInfo = tokenDirectory[normalizedSymbol];
+                  const url = tokenInfo?.contractAddress
+                    ? `https://www.binance.com/zh-CN/alpha/bsc/${tokenInfo.contractAddress}`
+                    : null;
 
-                          return url ? (
+                  return (
+                    <List.Item style={{ padding: '4px 0', borderBottom: 'none' }}>
+                      <Space
+                        size="small"
+                        style={{ width: '100%', justifyContent: 'space-between' }}
+                      >
+                        <Space size="small" align="center">
+                          {tokenInfo?.iconUrl && (
+                            <img
+                              src={tokenInfo.iconUrl}
+                              alt={`${normalizedSymbol} icon`}
+                              style={{
+                                width: 16,
+                                height: 16,
+                                borderRadius: '50%',
+                                objectFit: 'cover',
+                              }}
+                            />
+                          )}
+                          {url ? (
                             <a
                               href={url}
-                              target="_blank"
-                              rel="noopener noreferrer"
                               style={{
                                 color: '#1890ff',
                                 fontSize: 13,
                                 fontWeight: 600,
                                 textDecoration: 'none',
+                              }}
+                              onClick={(event) => {
+                                event.preventDefault();
+                                openUrlInActiveTab(url);
                               }}
                               onMouseEnter={(e) => {
                                 e.currentTarget.style.textDecoration = 'underline';
@@ -690,34 +921,34 @@ export function Popup(): React.ReactElement {
                                 e.currentTarget.style.textDecoration = 'none';
                               }}
                             >
-                              {coinSymbol}
+                              {normalizedSymbol}
                             </a>
                           ) : (
                             <Text strong style={{ fontSize: 13 }}>
-                              {coinSymbol}
+                              {normalizedSymbol}
                             </Text>
-                          );
-                        })()}
-                        <Tag color="success" style={{ fontSize: 11, margin: 0 }}>
-                          稳定
-                        </Tag>
-                        {item.md > 0 && (
-                          <Tag color="blue" style={{ fontSize: 11, margin: 0 }}>
-                            4倍
+                          )}
+                          <Tag color="success" style={{ fontSize: 11, margin: 0 }}>
+                            稳定
                           </Tag>
-                        )}
+                          {item.md > 0 && (
+                            <Tag color="blue" style={{ fontSize: 11, margin: 0 }}>
+                              4倍
+                            </Tag>
+                          )}
+                        </Space>
+                        <Space size="small">
+                          <Text type="secondary" style={{ fontSize: 11 }}>
+                            价差: {item.spr.toFixed(2)}
+                          </Text>
+                          <Text type="secondary" style={{ fontSize: 11 }}>
+                            天数: {item.md}
+                          </Text>
+                        </Space>
                       </Space>
-                      <Space size="small">
-                        <Text type="secondary" style={{ fontSize: 11 }}>
-                          价差: {item.spr.toFixed(2)}
-                        </Text>
-                        <Text type="secondary" style={{ fontSize: 11 }}>
-                          天数: {item.md}
-                        </Text>
-                      </Space>
-                    </Space>
-                  </List.Item>
-                )}
+                    </List.Item>
+                  );
+                }}
               />
             ) : (
               <Text type="secondary" style={{ fontSize: 12 }}>
@@ -729,13 +960,32 @@ export function Popup(): React.ReactElement {
           <Card title="当前代币" bordered={false} size="small" style={{ marginBottom: 8 }}>
             <Space direction="vertical" size="small" style={{ width: '100%' }}>
               <div>
-                <Text strong style={{ fontSize: 16 }}>
-                  {resolvedSymbol || '—'}
-                </Text>
+                <Space size={8} align="center">
+                  {resolvedTokenInfo?.iconUrl && (
+                    <img
+                      src={resolvedTokenInfo.iconUrl}
+                      alt={`${resolvedSymbolDisplay} icon`}
+                      style={{
+                        width: 20,
+                        height: 20,
+                        borderRadius: '50%',
+                        objectFit: 'cover',
+                      }}
+                    />
+                  )}
+                  <Text strong style={{ fontSize: 16 }}>
+                    {resolvedSymbolDisplay}
+                  </Text>
+                </Space>
               </div>
               <Text type="secondary" style={{ fontSize: 12, wordBreak: 'break-all' }}>
                 {activeTab.tokenAddress || '未选择代币'}
               </Text>
+              {isPointsFactorLocked && sanitizedPointsFactorLockValue !== null && (
+                <Text type="secondary" style={{ fontSize: 12 }}>
+                  积分倍数: {sanitizedPointsFactorLockValue} 倍
+                </Text>
+              )}
             </Space>
           </Card>
         </Space>
@@ -783,11 +1033,14 @@ export function Popup(): React.ReactElement {
               placeholder="1"
               value={Number.parseFloat(localPointsFactor)}
               onChange={(value) => {
+                if (isPointsFactorLocked) {
+                  return;
+                }
                 isEditingPointsFactor.current = true;
                 setLocalPointsFactor(String(value ?? 1));
               }}
               onBlur={(e) => void handlePointsFactorChange(e.target.value)}
-              disabled={controlsBusy}
+              disabled={controlsBusy || isPointsFactorLocked}
               title="每次成功订单后应用于记录买入量的乘数"
               style={{ width: '100%' }}
             />
@@ -1087,55 +1340,75 @@ export function Popup(): React.ReactElement {
                 <List
                   size="small"
                   dataSource={airdropToday}
-                  renderItem={(item) => (
-                    <List.Item style={{ padding: '8px 0', borderBottom: '1px solid #f0f0f0' }}>
-                      <Space direction="vertical" size={4} style={{ width: '100%' }}>
-                        <Space
-                          size="small"
-                          style={{ width: '100%', justifyContent: 'space-between' }}
-                        >
-                          <Space size="small">
-                            <Text strong style={{ fontSize: 13, color: '#1890ff' }}>
-                              {item.symbol}
-                              {item.phase && item.phase > 1 && ` 阶段${item.phase}`}
-                            </Text>
-                            {item.name && item.name !== item.symbol && (
-                              <Text type="secondary" style={{ fontSize: 12 }}>
-                                {item.name}
+                  renderItem={(item) => {
+                    const rawSymbol = typeof item.symbol === 'string' ? item.symbol.trim() : '';
+                    const normalizedSymbol = rawSymbol.length > 0 ? rawSymbol.toUpperCase() : '';
+                    const tokenInfo =
+                      normalizedSymbol.length > 0 ? tokenDirectory[normalizedSymbol] : undefined;
+                    const displaySymbol = rawSymbol.length > 0 ? rawSymbol : normalizedSymbol;
+
+                    return (
+                      <List.Item style={{ padding: '8px 0', borderBottom: '1px solid #f0f0f0' }}>
+                        <Space direction="vertical" size={4} style={{ width: '100%' }}>
+                          <Space
+                            size="small"
+                            style={{ width: '100%', justifyContent: 'space-between' }}
+                          >
+                            <Space size="small" align="center">
+                              {tokenInfo?.iconUrl && (
+                                <img
+                                  src={tokenInfo.iconUrl}
+                                  alt={`${displaySymbol} icon`}
+                                  style={{
+                                    width: 16,
+                                    height: 16,
+                                    borderRadius: '50%',
+                                    objectFit: 'cover',
+                                  }}
+                                />
+                              )}
+                              <Text strong style={{ fontSize: 13, color: '#1890ff' }}>
+                                {displaySymbol}
+                                {item.phase && item.phase > 1 && ` 阶段${item.phase}`}
+                              </Text>
+                              {item.name && item.name !== item.symbol && (
+                                <Text type="secondary" style={{ fontSize: 12 }}>
+                                  {item.name}
+                                </Text>
+                              )}
+                              {item.type === 'tge' && (
+                                <Tag color="purple" style={{ fontSize: 10, margin: 0 }}>
+                                  TGE
+                                </Tag>
+                              )}
+                              {item.type === 'grab' && (
+                                <Tag color="orange" style={{ fontSize: 10, margin: 0 }}>
+                                  秒杀
+                                </Tag>
+                              )}
+                              {item.completed && (
+                                <Tag color="green" style={{ fontSize: 10, margin: 0 }}>
+                                  ✓
+                                </Tag>
+                              )}
+                            </Space>
+                            <Tag color="red" style={{ fontSize: 11, margin: 0 }}>
+                              {item.time}
+                            </Tag>
+                          </Space>
+                          <Space size="middle" style={{ fontSize: 11, color: '#666' }}>
+                            <span>空投数量: {item.quantity}</span>
+                            <span>积分门槛: {item.threshold}</span>
+                            {item.estimatedValue && (
+                              <Text type="success" style={{ fontSize: 11 }}>
+                                ≈{item.estimatedValue}
                               </Text>
                             )}
-                            {item.type === 'tge' && (
-                              <Tag color="purple" style={{ fontSize: 10, margin: 0 }}>
-                                TGE
-                              </Tag>
-                            )}
-                            {item.type === 'grab' && (
-                              <Tag color="orange" style={{ fontSize: 10, margin: 0 }}>
-                                秒杀
-                              </Tag>
-                            )}
-                            {item.completed && (
-                              <Tag color="green" style={{ fontSize: 10, margin: 0 }}>
-                                ✓
-                              </Tag>
-                            )}
                           </Space>
-                          <Tag color="red" style={{ fontSize: 11, margin: 0 }}>
-                            {item.time}
-                          </Tag>
                         </Space>
-                        <Space size="middle" style={{ fontSize: 11, color: '#666' }}>
-                          <span>空投数量: {item.quantity}</span>
-                          <span>积分门槛: {item.threshold}</span>
-                          {item.estimatedValue && (
-                            <Text type="success" style={{ fontSize: 11 }}>
-                              ≈{item.estimatedValue}
-                            </Text>
-                          )}
-                        </Space>
-                      </Space>
-                    </List.Item>
-                  )}
+                      </List.Item>
+                    );
+                  }}
                 />
               </div>
             )}
@@ -1152,50 +1425,70 @@ export function Popup(): React.ReactElement {
                 <List
                   size="small"
                   dataSource={airdropForecast}
-                  renderItem={(item) => (
-                    <List.Item style={{ padding: '8px 0', borderBottom: '1px solid #f0f0f0' }}>
-                      <Space direction="vertical" size={4} style={{ width: '100%' }}>
-                        <Space
-                          size="small"
-                          style={{ width: '100%', justifyContent: 'space-between' }}
-                        >
-                          <Space size="small">
-                            <Text strong style={{ fontSize: 13, color: '#1890ff' }}>
-                              {item.symbol}
-                              {item.phase && item.phase > 1 && ` 阶段${item.phase}`}
-                            </Text>
-                            {item.name && item.name !== item.symbol && (
-                              <Text type="secondary" style={{ fontSize: 12 }}>
-                                {item.name}
+                  renderItem={(item) => {
+                    const rawSymbol = typeof item.symbol === 'string' ? item.symbol.trim() : '';
+                    const normalizedSymbol = rawSymbol.length > 0 ? rawSymbol.toUpperCase() : '';
+                    const tokenInfo =
+                      normalizedSymbol.length > 0 ? tokenDirectory[normalizedSymbol] : undefined;
+                    const displaySymbol = rawSymbol.length > 0 ? rawSymbol : normalizedSymbol;
+
+                    return (
+                      <List.Item style={{ padding: '8px 0', borderBottom: '1px solid #f0f0f0' }}>
+                        <Space direction="vertical" size={4} style={{ width: '100%' }}>
+                          <Space
+                            size="small"
+                            style={{ width: '100%', justifyContent: 'space-between' }}
+                          >
+                            <Space size="small" align="center">
+                              {tokenInfo?.iconUrl && (
+                                <img
+                                  src={tokenInfo.iconUrl}
+                                  alt={`${displaySymbol} icon`}
+                                  style={{
+                                    width: 16,
+                                    height: 16,
+                                    borderRadius: '50%',
+                                    objectFit: 'cover',
+                                  }}
+                                />
+                              )}
+                              <Text strong style={{ fontSize: 13, color: '#1890ff' }}>
+                                {displaySymbol}
+                                {item.phase && item.phase > 1 && ` 阶段${item.phase}`}
+                              </Text>
+                              {item.name && item.name !== item.symbol && (
+                                <Text type="secondary" style={{ fontSize: 12 }}>
+                                  {item.name}
+                                </Text>
+                              )}
+                              {item.type === 'tge' && (
+                                <Tag color="purple" style={{ fontSize: 10, margin: 0 }}>
+                                  TGE
+                                </Tag>
+                              )}
+                              {item.type === 'grab' && (
+                                <Tag color="orange" style={{ fontSize: 10, margin: 0 }}>
+                                  秒杀
+                                </Tag>
+                              )}
+                            </Space>
+                            <Tag color="blue" style={{ fontSize: 11, margin: 0 }}>
+                              {item.time}
+                            </Tag>
+                          </Space>
+                          <Space size="middle" style={{ fontSize: 11, color: '#666' }}>
+                            <span>空投数量: {item.quantity}</span>
+                            <span>积分门槛: {item.threshold}</span>
+                            {item.estimatedValue && (
+                              <Text type="success" style={{ fontSize: 11 }}>
+                                ≈{item.estimatedValue}
                               </Text>
                             )}
-                            {item.type === 'tge' && (
-                              <Tag color="purple" style={{ fontSize: 10, margin: 0 }}>
-                                TGE
-                              </Tag>
-                            )}
-                            {item.type === 'grab' && (
-                              <Tag color="orange" style={{ fontSize: 10, margin: 0 }}>
-                                秒杀
-                              </Tag>
-                            )}
                           </Space>
-                          <Tag color="blue" style={{ fontSize: 11, margin: 0 }}>
-                            {item.time}
-                          </Tag>
                         </Space>
-                        <Space size="middle" style={{ fontSize: 11, color: '#666' }}>
-                          <span>空投数量: {item.quantity}</span>
-                          <span>积分门槛: {item.threshold}</span>
-                          {item.estimatedValue && (
-                            <Text type="success" style={{ fontSize: 11 }}>
-                              ≈{item.estimatedValue}
-                            </Text>
-                          )}
-                        </Space>
-                      </Space>
-                    </List.Item>
-                  )}
+                      </List.Item>
+                    );
+                  }}
                 />
               </div>
             )}

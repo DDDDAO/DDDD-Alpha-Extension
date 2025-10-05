@@ -7,6 +7,7 @@ export default defineConfig({
   build: {
     outDir: 'extension/dist/popup',
     emptyOutDir: true,
+    chunkSizeWarningLimit: 1024,
     rollupOptions: {
       input: {
         popup: resolve(__dirname, 'src/popup/index.tsx'),

@@ -12,7 +12,7 @@
     "lint": "biome lint .",
     "format": "biome format --write .",
     "check": "biome check --write .",
-    "zip": "cd extension && zip -r ../dddd-alpha-extension.zip . -x '*.DS_Store' && cd ..",
+    "zip": "cd extension && zip -r ../dddd-alpha-extension.zip manifest.json dist popup.html options.html stability.html stability.css content-loader.js logo-16.png logo-48.png logo-128.png logo.png logo.svg logo_with_name.svg tg_logo.svg -x '*.DS_Store' && cd ..",
     "prepush": "npm run build && npm run zip"
   },
   "devDependencies": {

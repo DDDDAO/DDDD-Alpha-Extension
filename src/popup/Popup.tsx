@@ -41,8 +41,10 @@ import type { SchedulerState } from '../lib/storage';
 
 const { Text, Link, Title } = Typography;
 const GITHUB_REPO_URL = 'https://github.com/DDDDAO/DDDD-Alpha-Extension';
-const GITHUB_MARK_URL = new URL('../../assets/github-mark.svg', import.meta.url).href;
-const POPUP_LOGO_URL = new URL('../../assets/logo2.png', import.meta.url).href;
+const GITHUB_MARK_URL = chrome.runtime.getURL('github-mark.svg');
+const POPUP_LOGO_URL = chrome.runtime.getURL('logo2.png');
+const TG_LOGO_URL = chrome.runtime.getURL('tg_logo.svg');
+const LOGO_WITH_NAME_URL = chrome.runtime.getURL('logo_with_name.svg');
 
 const DEFAULT_PRICE_OFFSET_PERCENT = 0.01;
 const DEFAULT_POINTS_FACTOR = 1;
@@ -1096,7 +1098,7 @@ export function Popup(): React.ReactElement {
             </Title>
             <Link href="https://t.me/ddddao2025" target="_blank" rel="noopener noreferrer">
               <img
-                src="/tg_logo.svg"
+                src={TG_LOGO_URL}
                 alt="Telegram"
                 style={{ width: '24px', height: '24px', display: 'block' }}
               />
@@ -1585,7 +1587,7 @@ export function Popup(): React.ReactElement {
                 </Text>
                 <Link href="https://t.me/ddddao2025" target="_blank" rel="noopener noreferrer">
                   <img
-                    src="/tg_logo.svg"
+                    src={TG_LOGO_URL}
                     alt="Telegram"
                     style={{ width: '20px', height: '20px', display: 'inline-block' }}
                   />
@@ -1849,7 +1851,7 @@ export function Popup(): React.ReactElement {
         <span>Made with ❤️ by</span>
         <Link href="https://t.me/ddddao2025" target="_blank" rel="noopener noreferrer">
           <img
-            src="/logo_with_name.svg"
+            src={LOGO_WITH_NAME_URL}
             alt="DDDDAO"
             style={{
               height: '16px',

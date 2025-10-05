@@ -949,6 +949,8 @@ async function configureLimitOrder(params: {
     availableUsdt,
   });
 
+  await ensureLimitOrderMode(orderPanel);
+
   const priceInput = orderPanel.querySelector<HTMLInputElement>('#limitPrice');
   if (!priceInput) {
     // eslint-disable-next-line no-console
@@ -1013,6 +1015,56 @@ async function configureLimitOrder(params: {
   scheduleOrderConfirmationClick();
 
   return availableUsdt;
+}
+
+async function ensureLimitOrderMode(orderPanel: HTMLElement): Promise<void> {
+  const buyTab = findOrderPanelTab(orderPanel, '#bn-tab-0.bn-tab__buySell');
+  if (!buyTab) {
+    // eslint-disable-next-line no-console
+    console.error('[alpha-auto-bot] Buy tab not found');
+    throw new Error('Buy tab not found.');
+  }
+
+  if (buyTab.getAttribute('aria-selected') !== 'true') {
+    // eslint-disable-next-line no-console
+    console.log('[alpha-auto-bot] Selecting buy tab');
+    buyTab.click();
+    await waitForAnimationFrame();
+    await waitRandomDelay(200, 400);
+  }
+
+  const limitTab =
+    findOrderPanelTab(orderPanel, '#bn-tab-limit') ??
+    findOrderPanelTab(orderPanel, '#bn-tab-LIMIT');
+  if (!limitTab) {
+    // eslint-disable-next-line no-console
+    console.error('[alpha-auto-bot] Limit tab not found');
+    throw new Error('Limit tab not found.');
+  }
+
+  if (limitTab.getAttribute('aria-selected') !== 'true') {
+    // eslint-disable-next-line no-console
+    console.log('[alpha-auto-bot] Selecting limit tab');
+    limitTab.click();
+    await waitForAnimationFrame();
+    await waitRandomDelay(200, 400);
+  }
+}
+
+function findOrderPanelTab(orderPanel: HTMLElement, selector: string): HTMLElement | null {
+  const scoped = orderPanel.querySelector<HTMLElement>(selector);
+  if (scoped) {
+    return scoped;
+  }
+
+  const candidates = Array.from(document.querySelectorAll<HTMLElement>(selector));
+  for (const candidate of candidates) {
+    if (orderPanel.contains(candidate)) {
+      return candidate;
+    }
+  }
+
+  return null;
 }
 
 function ensureReverseOrderToggle(orderPanel: HTMLElement): boolean {

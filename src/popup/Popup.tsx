@@ -1,5 +1,4 @@
 import {
-  BarChartOutlined,
   BellOutlined,
   CheckCircleOutlined,
   ClockCircleOutlined,
@@ -1072,10 +1071,6 @@ export function Popup(): React.ReactElement {
     [activeTab.tabId],
   );
 
-  function handleOpenStability(): void {
-    chrome.tabs.create({ url: chrome.runtime.getURL('stability.html') });
-  }
-
   return (
     <div style={{ width: 420, padding: 16, background: '#f5f5f5', minHeight: 600 }}>
       <Card bordered={false} style={{ marginBottom: 16 }}>
@@ -1154,16 +1149,6 @@ export function Popup(): React.ReactElement {
             bordered={false}
             size="small"
             style={{ marginBottom: 8 }}
-            extra={
-              <Button
-                type="link"
-                size="small"
-                icon={<BarChartOutlined />}
-                onClick={handleOpenStability}
-              >
-                详情
-              </Button>
-            }
           >
             {stabilityLoading ? (
               <Text type="secondary" style={{ fontSize: 12 }}>

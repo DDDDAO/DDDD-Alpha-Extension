@@ -77,8 +77,17 @@ chrome.runtime.onMessage.addListener((message: RuntimeMessage, _sender, sendResp
       const previousTokenSymbol = state.tokenSymbol ?? state.lastResult?.tokenSymbol;
       const resolvedTokenSymbol = tokenSymbol ?? previousTokenSymbol;
 
-      if (currentBalanceValue === undefined) {
+      // 如果余额和token symbol都没有,则跳过更新
+      if (currentBalanceValue === undefined && !tokenSymbol) {
         return state;
+      }
+
+      // 如果只有token symbol而没有余额,仅更新token symbol,不影响其他状态
+      if (currentBalanceValue === undefined) {
+        return {
+          ...state,
+          tokenSymbol: resolvedTokenSymbol,
+        };
       }
 
       const existingFirstBalance =
@@ -98,9 +107,10 @@ chrome.runtime.onMessage.addListener((message: RuntimeMessage, _sender, sendResp
 
       let nextFirstBalance = existingFirstBalance;
 
+      // 只在余额 > 0 时才设置初始余额,避免页面加载时余额为0的情况
       if (!isSameDay) {
-        nextFirstBalance = currentBalanceValue;
-      } else if (nextFirstBalance === undefined) {
+        nextFirstBalance = currentBalanceValue > 0 ? currentBalanceValue : undefined;
+      } else if (nextFirstBalance === undefined && currentBalanceValue > 0) {
         nextFirstBalance = currentBalanceValue;
       }
 
@@ -268,7 +278,8 @@ chrome.runtime.onMessage.addListener((message: RuntimeMessage, _sender, sendResp
           : undefined;
       let nextFirstBalance = existingFirstBalance;
 
-      if (currentBalanceValue !== undefined) {
+      // 只在余额 > 0 时才设置初始余额
+      if (currentBalanceValue !== undefined && currentBalanceValue > 0) {
         if (!isSameDay) {
           nextFirstBalance = currentBalanceValue;
         } else if (nextFirstBalance === undefined) {

@@ -16,5 +16,5 @@
     "types": ["chrome"]
   },
   "include": ["src"],
-  "exclude": ["node_modules", "extension/dist", "src/popup", "tests/stability-tracker"]
+  "exclude": ["node_modules", "extension/dist", "src/popup"]
 }

@@ -42,6 +42,7 @@ import type { SchedulerState } from '../lib/storage';
 const { Text, Link, Title } = Typography;
 const GITHUB_REPO_URL = 'https://github.com/DDDDAO/DDDD-Alpha-Extension';
 const GITHUB_MARK_URL = new URL('../../assets/github-mark.svg', import.meta.url).href;
+const POPUP_LOGO_URL = new URL('../../assets/logo2.png', import.meta.url).href;
 
 const DEFAULT_PRICE_OFFSET_PERCENT = 0.01;
 const DEFAULT_POINTS_FACTOR = 1;
@@ -1086,7 +1087,7 @@ export function Popup(): React.ReactElement {
             }}
           >
             <img
-              src="/logo.png"
+              src={POPUP_LOGO_URL}
               alt="Logo"
               style={{ width: '32px', height: '32px', display: 'block' }}
             />

@@ -153,7 +153,7 @@ async function performOrderHistoryRequest(
   if (!resolvedToken) {
     return {
       success: false,
-      message: 'Unable to resolve csrf token from cr00 cookie',
+      message: '请先登录币安',
     } satisfies FetchOrderHistoryResponse;
   }
 
@@ -215,10 +215,18 @@ async function refreshOrderHistorySnapshotForAutomation(): Promise<OrderHistoryS
     if (!csrfToken) {
       // eslint-disable-next-line no-console
       console.warn('[dddd-alpah-extension] Unable to resolve csrf token for order history refresh');
+      if (!loginErrorDispatched) {
+        await dispatchRuntimeMessage({
+          type: 'TASK_ERROR',
+          payload: { message: '请先登录币安' },
+        });
+        loginErrorDispatched = true;
+      }
       return null;
     }
 
     const response = await performOrderHistoryRequest(targetUrl, csrfToken);
+    loginErrorDispatched = false;
     if (!response.success || !response.data) {
       if (response.message) {
         // eslint-disable-next-line no-console
@@ -408,7 +416,7 @@ async function handleAutomation(): Promise<void> {
     console.warn('[dddd-alpah-extension] Login required detected');
     await dispatchRuntimeMessage({
       type: 'TASK_ERROR',
-      payload: { message: 'Login required. Please authenticate manually.' },
+      payload: { message: '请先登录币安' },
     });
     loginErrorDispatched = true;
     return;
@@ -521,7 +529,7 @@ async function runEvaluationCycle(
         console.warn('[dddd-alpah-extension] Login prompt detected during evaluation');
         await dispatchRuntimeMessage({
           type: 'TASK_ERROR',
-          payload: { message: 'Login required. Please authenticate manually.' },
+          payload: { message: '请先登录币安' },
         });
         loginErrorDispatched = true;
       }

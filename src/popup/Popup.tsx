@@ -998,6 +998,8 @@ export function Popup(): React.ReactElement {
   }
 
   const successfulTradeLimitReached = (successfulTradesToday ?? 0) >= MAX_SUCCESSFUL_TRADES;
+  const requiresLogin = state?.requiresLogin === true;
+  const loginRequired = requiresLogin || state?.lastError === '请先登录币安';
 
   function calculateTotalCost(): number | undefined {
     const firstBalance =
@@ -1376,7 +1378,13 @@ export function Popup(): React.ReactElement {
             type="primary"
             icon={<PlayCircleOutlined />}
             loading={controlsBusy}
-            disabled={controlsBusy || isEnabled || !canOperate || successfulTradeLimitReached}
+            disabled={
+              controlsBusy ||
+              isEnabled ||
+              !canOperate ||
+              successfulTradeLimitReached ||
+              loginRequired
+            }
             onClick={() => void handleStart()}
             size="large"
           >

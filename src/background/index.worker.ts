@@ -218,6 +218,7 @@ chrome.runtime.onMessage.addListener((message: RuntimeMessage, _sender, sendResp
         tokenSymbol: resolvedTokenSymbol,
         dailyBuyVolume: nextDaily,
         lastResult: nextLastResult,
+        requiresLogin: false,
       };
     });
 
@@ -349,6 +350,7 @@ chrome.runtime.onMessage.addListener((message: RuntimeMessage, _sender, sendResp
           tokenSymbol: resolvedTokenSymbol,
           firstBalanceToday: nextDaily.firstBalance,
         },
+        requiresLogin: false,
       };
     });
     sendResponse({ acknowledged: true });
@@ -365,6 +367,7 @@ chrome.runtime.onMessage.addListener((message: RuntimeMessage, _sender, sendResp
       isRunning: false,
       lastError: normalizedMessage ?? 'Unknown error',
       lastRun: state.lastRun,
+      requiresLogin: normalizedMessage === '请先登录币安',
     }));
     sendResponse({ acknowledged: true });
     return true;

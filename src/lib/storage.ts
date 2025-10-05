@@ -42,6 +42,7 @@ export interface SchedulerState {
     firstBalance?: number;
   };
   settings: SchedulerSettings;
+  requiresLogin?: boolean;
 }
 
 const DEFAULT_SETTINGS: SchedulerSettings = {
@@ -66,6 +67,7 @@ export async function getSchedulerState(): Promise<SchedulerState> {
         isRunning: false,
         isEnabled: false,
         settings: { ...DEFAULT_SETTINGS },
+        requiresLogin: false,
       };
 
       if (!stored) {
@@ -95,6 +97,7 @@ export async function getSchedulerState(): Promise<SchedulerState> {
         isRunning: stored.isRunning ?? false,
         isEnabled: stored.isEnabled ?? false,
         settings,
+        requiresLogin: stored.requiresLogin === true,
       });
     });
   });

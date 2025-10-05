@@ -153,6 +153,10 @@ function determineBucket(
     if (categoryDate > todayStr) {
       return 'future';
     }
+    // 过滤掉日期早于今天的空投
+    if (categoryDate < todayStr) {
+      return null;
+    }
   }
 
   const status = sanitizeText(airdrop.status)?.toLowerCase();

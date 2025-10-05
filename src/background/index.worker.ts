@@ -2,6 +2,7 @@ import { DEFAULT_AUTOMATION, DEFAULT_POINTS_TARGET } from '../config/defaults.js
 import type { RuntimeMessage } from '../lib/messages.js';
 import { getSchedulerState, updateSchedulerState } from '../lib/storage.js';
 import { getTab } from '../lib/tabs.js';
+import { initAirdropMonitor } from './airdrop-monitor.js';
 
 const BINANCE_ALPHA_PATTERN =
   /^https:\/\/www\.binance\.com\/(?:[a-z]{2}(?:-[A-Z]{2})?\/)alpha\/bsc\/(0x[a-fA-F0-9]{40})(?:[/?#]|$)/u;
@@ -37,6 +38,9 @@ class TabUnavailableError extends AutomationMessageError {
 let immediateRunScheduled = false;
 
 void bootstrapScheduler();
+
+// 初始化空投监控
+initAirdropMonitor();
 
 chrome.runtime.onInstalled.addListener(() => {
   void bootstrapScheduler();

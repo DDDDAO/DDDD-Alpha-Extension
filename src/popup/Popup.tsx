@@ -1,11 +1,13 @@
 import {
   BarChartOutlined,
+  BellOutlined,
   CheckCircleOutlined,
   ClockCircleOutlined,
   DollarOutlined,
   InfoCircleOutlined,
   PauseCircleOutlined,
   PlayCircleOutlined,
+  SyncOutlined,
   TrophyOutlined,
 } from '@ant-design/icons';
 import {
@@ -24,6 +26,8 @@ import {
 } from 'antd';
 import React, { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { STORAGE_KEY } from '../config/storageKey.js';
+import type { ProcessedAirdrop } from '../lib/airdrop.js';
+import { AIRDROP_STORAGE_KEY, processAirdropApiResponse } from '../lib/airdrop.js';
 import type { SchedulerState } from '../lib/storage';
 
 const { Text, Link, Title } = Typography;
@@ -44,6 +48,10 @@ const STABILITY_FEED_URL = 'https://alpha123.uk/stability/stability_feed_v2.json
 const STABILITY_UPDATE_INTERVAL = 30000; // 30秒更新一次
 const MAX_SPREAD_THRESHOLD = 2.0; // 价差基点阈值
 
+// 空投提醒相关常量
+const AIRDROP_API_URL = 'https://alpha123.uk/api/data';
+const AIRDROP_UPDATE_INTERVAL = 60000; // 60秒更新一次（popup打开时）
+
 // 币种地址映射
 const COIN_ADDRESSES: Record<string, string> = {
   AOP: '0xd5df4d260d7a0145f655bcbf3b398076f21016c7',
@@ -53,6 +61,7 @@ const COIN_ADDRESSES: Record<string, string> = {
   KOGE: '0xe6df05ce8c8301223373cf5b969afcb1498c5528',
   STAR: '0x8fce7206e3043dd360f115afa956ee31b90b787c',
   POP: '0xa3cfb853339b77f385b994799b015cb04b208fe6',
+  FROGGIE: '0xa45f5eb48cecd034751651aeeda6271bd5df8888',
 };
 
 interface StabilityItem {
@@ -93,6 +102,9 @@ export function Popup(): React.ReactElement {
   const [localPointsTarget, setLocalPointsTarget] = useState('15');
   const [stableCoins, setStableCoins] = useState<StabilityItem[]>([]);
   const [stabilityLoading, setStabilityLoading] = useState(false);
+  const [airdropToday, setAirdropToday] = useState<ProcessedAirdrop[]>([]);
+  const [airdropForecast, setAirdropForecast] = useState<ProcessedAirdrop[]>([]);
+  const [airdropLoading, setAirdropLoading] = useState(false);
 
   const isEditingPriceOffset = useRef(false);
   const isEditingPointsFactor = useRef(false);
@@ -166,6 +178,90 @@ export function Popup(): React.ReactElement {
     }
   }, []);
 
+  // 获取空投数据
+  const fetchAirdrops = useCallback(async (): Promise<void> => {
+    try {
+      setAirdropLoading(true);
+
+      // 先尝试从存储中获取缓存数据
+      const cached = await chrome.storage.local.get(AIRDROP_STORAGE_KEY);
+      if (cached[AIRDROP_STORAGE_KEY]) {
+        const data = cached[AIRDROP_STORAGE_KEY];
+        const lastUpdate = data.timestamp || 0;
+        const now = Date.now();
+
+        // 如果数据不超过30分钟，使用缓存
+        if (now - lastUpdate < 30 * 60 * 1000) {
+          console.log('使用缓存的空投数据');
+          setAirdropToday(data.today || []);
+          setAirdropForecast(data.forecast || []);
+          setAirdropLoading(false);
+          return;
+        }
+      }
+
+      // 直接从 API 获取数据（类似稳定性数据的获取方式）
+      console.log('直接从 API 获取空投数据...');
+
+      try {
+        // 添加时间戳避免缓存
+        const timestamp = Date.now();
+        const response = await fetch(`${AIRDROP_API_URL}?fresh=1&t=${timestamp}`, {
+          referrer: 'https://alpha123.uk/',
+          referrerPolicy: 'strict-origin-when-cross-origin',
+          credentials: 'include',
+          mode: 'cors',
+          headers: {
+            Accept: 'application/json, text/plain, */*',
+          },
+        });
+
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+
+        const apiData = await response.json();
+        console.log('API 数据获取成功，空投数量:', apiData?.airdrops?.length || 0);
+
+        // 处理空投数据
+        const processedData = processAirdropApiResponse(apiData);
+
+        // 保存到存储
+        await chrome.storage.local.set({
+          [AIRDROP_STORAGE_KEY]: processedData,
+        });
+
+        // 更新状态
+        setAirdropToday(processedData.today || []);
+        setAirdropForecast(processedData.forecast || []);
+        setAirdropLoading(false);
+      } catch (error) {
+        console.error('获取空投数据失败:', error);
+
+        // 失败时尝试使用缓存
+        chrome.storage.local.get(AIRDROP_STORAGE_KEY, (result) => {
+          const data = result[AIRDROP_STORAGE_KEY];
+          if (data) {
+            console.log('使用缓存的数据:', data);
+            setAirdropToday(data.today || []);
+            setAirdropForecast(data.forecast || []);
+          } else {
+            console.log('无可用的缓存数据');
+            setAirdropToday([]);
+            setAirdropForecast([]);
+          }
+          setAirdropLoading(false);
+        });
+      }
+    } catch (error) {
+      console.error('获取空投数据失败:', error);
+      setAirdropToday([]);
+      setAirdropForecast([]);
+    } finally {
+      setAirdropLoading(false);
+    }
+  }, []);
+
   // Load initial state
   const loadState = useCallback(async (): Promise<void> => {
     const result = await chrome.storage.local.get(STORAGE_KEY);
@@ -214,6 +310,7 @@ export function Popup(): React.ReactElement {
     void loadState();
     void refreshActiveTab();
     void fetchStableCoins(); // 初始加载稳定币种
+    void fetchAirdrops(); // 初始加载空投数据
 
     // Listen for storage changes
     const handleStorageChange = (
@@ -238,12 +335,18 @@ export function Popup(): React.ReactElement {
       void fetchStableCoins();
     }, STABILITY_UPDATE_INTERVAL);
 
+    // 定时更新空投数据（60秒）
+    const airdropInterval = setInterval(() => {
+      void fetchAirdrops();
+    }, AIRDROP_UPDATE_INTERVAL);
+
     return () => {
       chrome.storage.onChanged.removeListener(handleStorageChange);
       clearInterval(interval);
       clearInterval(stabilityInterval);
+      clearInterval(airdropInterval);
     };
-  }, [loadState, refreshActiveTab, fetchStableCoins]);
+  }, [loadState, refreshActiveTab, fetchStableCoins, fetchAirdrops]);
 
   // Sync local input values with state, but not during active editing
   useEffect(() => {
@@ -927,6 +1030,185 @@ export function Popup(): React.ReactElement {
           </Row>
         </Card>
       )}
+
+      {/* 空投提醒卡片 */}
+      <Card
+        title={
+          <Space>
+            <BellOutlined style={{ color: '#ff4d4f' }} />
+            <span>空投提醒</span>
+            <Text type="secondary" style={{ fontSize: 11 }}>
+              (每30分钟自动更新)
+            </Text>
+          </Space>
+        }
+        bordered={false}
+        size="small"
+        style={{ marginTop: 16 }}
+        extra={
+          <Button
+            type="text"
+            size="small"
+            icon={<SyncOutlined spin={airdropLoading} />}
+            onClick={() => {
+              void fetchAirdrops();
+              // 安全地通知后台立即更新
+              try {
+                chrome.runtime.sendMessage({ type: 'UPDATE_AIRDROP_NOW' }, () => {
+                  if (chrome.runtime.lastError) {
+                    console.log('无法触发更新:', chrome.runtime.lastError.message);
+                  }
+                });
+              } catch (err) {
+                console.log('触发更新失败:', err);
+              }
+            }}
+            disabled={airdropLoading}
+          >
+            刷新
+          </Button>
+        }
+      >
+        {airdropLoading ? (
+          <Text type="secondary" style={{ fontSize: 12 }}>
+            加载中...
+          </Text>
+        ) : (
+          <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+            {/* 今日空投 */}
+            {airdropToday.length > 0 && (
+              <div>
+                <Text
+                  strong
+                  style={{ fontSize: 13, color: '#ff4d4f', marginBottom: 8, display: 'block' }}
+                >
+                  今日空投
+                </Text>
+                <List
+                  size="small"
+                  dataSource={airdropToday}
+                  renderItem={(item) => (
+                    <List.Item style={{ padding: '8px 0', borderBottom: '1px solid #f0f0f0' }}>
+                      <Space direction="vertical" size={4} style={{ width: '100%' }}>
+                        <Space
+                          size="small"
+                          style={{ width: '100%', justifyContent: 'space-between' }}
+                        >
+                          <Space size="small">
+                            <Text strong style={{ fontSize: 13, color: '#1890ff' }}>
+                              {item.symbol}
+                              {item.phase && item.phase > 1 && ` 阶段${item.phase}`}
+                            </Text>
+                            {item.name && item.name !== item.symbol && (
+                              <Text type="secondary" style={{ fontSize: 12 }}>
+                                {item.name}
+                              </Text>
+                            )}
+                            {item.type === 'tge' && (
+                              <Tag color="purple" style={{ fontSize: 10, margin: 0 }}>
+                                TGE
+                              </Tag>
+                            )}
+                            {item.type === 'grab' && (
+                              <Tag color="orange" style={{ fontSize: 10, margin: 0 }}>
+                                秒杀
+                              </Tag>
+                            )}
+                            {item.completed && (
+                              <Tag color="green" style={{ fontSize: 10, margin: 0 }}>
+                                ✓
+                              </Tag>
+                            )}
+                          </Space>
+                          <Tag color="red" style={{ fontSize: 11, margin: 0 }}>
+                            {item.time}
+                          </Tag>
+                        </Space>
+                        <Space size="middle" style={{ fontSize: 11, color: '#666' }}>
+                          <span>空投数量: {item.quantity}</span>
+                          <span>积分门槛: {item.threshold}</span>
+                          {item.estimatedValue && (
+                            <Text type="success" style={{ fontSize: 11 }}>
+                              ≈{item.estimatedValue}
+                            </Text>
+                          )}
+                        </Space>
+                      </Space>
+                    </List.Item>
+                  )}
+                />
+              </div>
+            )}
+
+            {/* 空投预告 */}
+            {airdropForecast.length > 0 && (
+              <div>
+                <Text
+                  strong
+                  style={{ fontSize: 13, color: '#1890ff', marginBottom: 8, display: 'block' }}
+                >
+                  空投预告
+                </Text>
+                <List
+                  size="small"
+                  dataSource={airdropForecast}
+                  renderItem={(item) => (
+                    <List.Item style={{ padding: '8px 0', borderBottom: '1px solid #f0f0f0' }}>
+                      <Space direction="vertical" size={4} style={{ width: '100%' }}>
+                        <Space
+                          size="small"
+                          style={{ width: '100%', justifyContent: 'space-between' }}
+                        >
+                          <Space size="small">
+                            <Text strong style={{ fontSize: 13, color: '#1890ff' }}>
+                              {item.symbol}
+                              {item.phase && item.phase > 1 && ` 阶段${item.phase}`}
+                            </Text>
+                            {item.name && item.name !== item.symbol && (
+                              <Text type="secondary" style={{ fontSize: 12 }}>
+                                {item.name}
+                              </Text>
+                            )}
+                            {item.type === 'tge' && (
+                              <Tag color="purple" style={{ fontSize: 10, margin: 0 }}>
+                                TGE
+                              </Tag>
+                            )}
+                            {item.type === 'grab' && (
+                              <Tag color="orange" style={{ fontSize: 10, margin: 0 }}>
+                                秒杀
+                              </Tag>
+                            )}
+                          </Space>
+                          <Tag color="blue" style={{ fontSize: 11, margin: 0 }}>
+                            {item.time}
+                          </Tag>
+                        </Space>
+                        <Space size="middle" style={{ fontSize: 11, color: '#666' }}>
+                          <span>空投数量: {item.quantity}</span>
+                          <span>积分门槛: {item.threshold}</span>
+                          {item.estimatedValue && (
+                            <Text type="success" style={{ fontSize: 11 }}>
+                              ≈{item.estimatedValue}
+                            </Text>
+                          )}
+                        </Space>
+                      </Space>
+                    </List.Item>
+                  )}
+                />
+              </div>
+            )}
+
+            {/* 无数据提示 */}
+            {airdropToday.length === 0 && airdropForecast.length === 0 && (
+              <Text type="secondary" style={{ fontSize: 12 }}>
+                暂无空投信息
+              </Text>
+            )}
+          </Space>
+        )}
+      </Card>
 
       <div style={{ textAlign: 'center', marginTop: 16 }}>
         <Link

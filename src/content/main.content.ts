@@ -1,7 +1,22 @@
-import { DEFAULT_POINTS_FACTOR, DEFAULT_PRICE_OFFSET_PERCENT } from '../config/defaults.js';
+import {
+  DEFAULT_POINTS_FACTOR,
+  DEFAULT_POINTS_TARGET,
+  DEFAULT_PRICE_OFFSET_PERCENT,
+  MAX_SUCCESSFUL_TRADES,
+  SUCCESSFUL_TRADES_LIMIT_MESSAGE,
+} from '../config/defaults.js';
 import { SELECTORS } from '../config/selectors.js';
-import { STORAGE_KEY } from '../config/storageKey.js';
-import { postRuntimeMessage, type RuntimeMessage, type TaskResultMeta } from '../lib/messages.js';
+import { STORAGE_KEY, TOKEN_DIRECTORY_STORAGE_KEY } from '../config/storageKey.js';
+import { calculateAlphaPointStats } from '../lib/alphaPoints.js';
+import { md5 } from '../lib/md5.js';
+import {
+  type FetchOrderHistoryResponse,
+  type OrderHistorySnapshotPayload,
+  postRuntimeMessage,
+  type RuntimeMessage,
+  type TaskResultMeta,
+} from '../lib/messages.js';
+import { buildOrderHistoryUrl, summarizeOrderHistoryData } from '../lib/orderHistory.js';
 
 const POLLING_INTERVAL_MS = 1_000;
 const ORDER_PLACEMENT_COOLDOWN_MS = 5_000;
@@ -11,16 +26,245 @@ const LIMIT_STATE_POLL_INTERVAL_MS = 100;
 const MIN_PRICE_OFFSET_PERCENT = 0;
 const MAX_PRICE_OFFSET_PERCENT = 5;
 
+function getCookieValue(name: string): string | null {
+  const pattern = new RegExp(`(?:^|;\\s*)${name}=([^;]*)`);
+  const match = document.cookie.match(pattern);
+  if (!match) {
+    return null;
+  }
+
+  const value = match[1];
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}
+
+function resolveCsrfToken(): string | null {
+  const cookieValue = getCookieValue('cr00');
+  if (!cookieValue) {
+    return null;
+  }
+  return md5(cookieValue);
+}
+
 function getPageLocale(): 'en' | 'zh-CN' {
   const href = window.location.href;
   if (href.includes('/zh-CN/')) {
     // eslint-disable-next-line no-console
-    console.log('[alpha-auto-bot] Detected locale: zh-CN');
+    console.log('[dddd-alpah-extension] Detected locale: zh-CN');
     return 'zh-CN';
   }
   // eslint-disable-next-line no-console
-  console.log('[alpha-auto-bot] Detected locale: en (default)');
+  console.log('[dddd-alpah-extension] Detected locale: en (default)');
   return 'en';
+}
+
+function invalidateTokenDirectoryCache(): void {
+  cachedAlphaMultiplierMap = null;
+  cachedAlphaMultiplierTimestamp = 0;
+}
+
+function extractTokenDirectory(value: unknown): Record<string, TokenDirectoryRecord> | null {
+  if (!value || typeof value !== 'object') {
+    return null;
+  }
+
+  const container = value as TokenDirectoryContainer;
+  const directoryCandidate = container.directory ?? value;
+
+  if (!directoryCandidate || typeof directoryCandidate !== 'object') {
+    return null;
+  }
+
+  return directoryCandidate as Record<string, TokenDirectoryRecord>;
+}
+
+async function getAlphaMultiplierMap(): Promise<Record<string, number>> {
+  const now = Date.now();
+  if (
+    cachedAlphaMultiplierMap &&
+    now - cachedAlphaMultiplierTimestamp < MULTIPLIER_CACHE_DURATION_MS
+  ) {
+    return cachedAlphaMultiplierMap;
+  }
+
+  const directory = await new Promise<Record<string, TokenDirectoryRecord> | null>((resolve) => {
+    chrome.storage.local.get(TOKEN_DIRECTORY_STORAGE_KEY, (result) => {
+      resolve(extractTokenDirectory(result[TOKEN_DIRECTORY_STORAGE_KEY]));
+    });
+  });
+
+  const alphaMap: Record<string, number> = {};
+
+  if (directory) {
+    for (const entry of Object.values(directory)) {
+      if (!entry || typeof entry !== 'object') {
+        continue;
+      }
+
+      const alphaIdRaw = typeof entry.alphaId === 'string' ? entry.alphaId.trim() : '';
+      if (alphaIdRaw.length === 0) {
+        continue;
+      }
+
+      const multiplierRaw = entry.mulPoint;
+      const multiplier =
+        typeof multiplierRaw === 'number' ? multiplierRaw : Number(multiplierRaw ?? NaN);
+      if (!Number.isFinite(multiplier) || multiplier <= 0) {
+        continue;
+      }
+
+      alphaMap[alphaIdRaw.toUpperCase()] = multiplier;
+    }
+  }
+
+  cachedAlphaMultiplierMap = alphaMap;
+  cachedAlphaMultiplierTimestamp = now;
+  return alphaMap;
+}
+
+function lookupAlphaMultiplier(alphaMap: Record<string, number>, alphaId: string): number {
+  if (alphaId.length === 0) {
+    return 1;
+  }
+
+  const candidate = alphaMap[alphaId.toUpperCase()];
+  if (!Number.isFinite(candidate) || candidate === undefined || candidate <= 0) {
+    return 1;
+  }
+
+  return candidate;
+}
+
+async function performOrderHistoryRequest(
+  targetUrl: string,
+  csrfToken?: string | null,
+): Promise<FetchOrderHistoryResponse> {
+  if (typeof targetUrl !== 'string' || targetUrl.length === 0) {
+    return {
+      success: false,
+      message: 'Invalid order history URL',
+    } satisfies FetchOrderHistoryResponse;
+  }
+
+  const resolvedToken = csrfToken && csrfToken.length > 0 ? csrfToken : resolveCsrfToken();
+  if (!resolvedToken) {
+    return {
+      success: false,
+      message: '请先登录币安',
+    } satisfies FetchOrderHistoryResponse;
+  }
+
+  try {
+    const response = await fetch(targetUrl, {
+      method: 'GET',
+      credentials: 'include',
+      cache: 'no-store',
+      headers: {
+        clienttype: 'web',
+        csrftoken: resolvedToken,
+        Accept: 'application/json, text/plain, */*',
+      },
+    });
+
+    const status = response.status;
+    let data: unknown = null;
+
+    try {
+      const text = await response.text();
+      data = text ? JSON.parse(text) : null;
+    } catch (parseError) {
+      // eslint-disable-next-line no-console
+      console.warn(
+        '[dddd-alpah-extension] Failed to parse order history response JSON',
+        parseError,
+      );
+    }
+
+    if (!response.ok) {
+      return {
+        success: false,
+        status,
+        data,
+        message: `Order history request failed with status ${status}`,
+      } satisfies FetchOrderHistoryResponse;
+    }
+
+    return {
+      success: true,
+      status,
+      data,
+    } satisfies FetchOrderHistoryResponse;
+  } catch (error) {
+    const messageText = error instanceof Error ? error.message : String(error);
+    // eslint-disable-next-line no-console
+    console.error('[dddd-alpah-extension] Order history fetch failed:', messageText);
+    return {
+      success: false,
+      message: messageText,
+    } satisfies FetchOrderHistoryResponse;
+  }
+}
+
+async function refreshOrderHistorySnapshotForAutomation(): Promise<OrderHistorySnapshotPayload | null> {
+  try {
+    const targetUrl = buildOrderHistoryUrl();
+    const csrfToken = resolveCsrfToken();
+    if (!csrfToken) {
+      // eslint-disable-next-line no-console
+      console.warn('[dddd-alpah-extension] Unable to resolve csrf token for order history refresh');
+      if (!loginErrorDispatched) {
+        await dispatchRuntimeMessage({
+          type: 'TASK_ERROR',
+          payload: { message: '请先登录币安' },
+        });
+        loginErrorDispatched = true;
+      }
+      return null;
+    }
+
+    const response = await performOrderHistoryRequest(targetUrl, csrfToken);
+    loginErrorDispatched = false;
+    if (!response.success || !response.data) {
+      if (response.message) {
+        // eslint-disable-next-line no-console
+        console.warn('[dddd-alpah-extension] Order history refresh failed:', response.message);
+      }
+      return null;
+    }
+
+    const alphaMap = await getAlphaMultiplierMap();
+    const summary = summarizeOrderHistoryData(response.data, (alphaId) =>
+      lookupAlphaMultiplier(alphaMap, alphaId),
+    );
+
+    const { points: alphaPoints, nextThresholdDelta } = calculateAlphaPointStats(
+      summary.totalBuyVolume,
+    );
+    const snapshot: OrderHistorySnapshotPayload = {
+      date: new Date().toISOString().slice(0, 10),
+      totalBuyVolume: summary.totalBuyVolume,
+      buyOrderCount: summary.buyOrderCount,
+      alphaPoints,
+      nextThresholdDelta,
+      fetchedAt: Date.now(),
+      source: 'automation',
+    };
+
+    await dispatchRuntimeMessage({
+      type: 'ORDER_HISTORY_SNAPSHOT',
+      payload: snapshot,
+    });
+
+    return snapshot;
+  } catch (error) {
+    const messageText = error instanceof Error ? error.message : String(error);
+    // eslint-disable-next-line no-console
+    console.error('[dddd-alpah-extension] Failed to refresh order history snapshot:', messageText);
+    return null;
+  }
 }
 
 let pollingTimerId: number | undefined;
@@ -32,16 +276,31 @@ let automationEnabled = false;
 let automationStateWatcherInitialized = false;
 let priceOffsetPercent = DEFAULT_PRICE_OFFSET_PERCENT;
 let pointsFactor = DEFAULT_POINTS_FACTOR;
+let pointsTarget = DEFAULT_POINTS_TARGET;
+
+const MULTIPLIER_CACHE_DURATION_MS = 5 * 60_000;
+
+interface TokenDirectoryRecord {
+  mulPoint?: number | string | null;
+  alphaId?: string | null;
+}
+
+interface TokenDirectoryContainer {
+  directory?: Record<string, TokenDirectoryRecord>;
+}
+
+let cachedAlphaMultiplierMap: Record<string, number> | null = null;
+let cachedAlphaMultiplierTimestamp = 0;
 
 chrome.runtime.onMessage.addListener((message: RuntimeMessage, _sender, sendResponse) => {
   // eslint-disable-next-line no-console
-  console.log('[alpha-auto-bot] Received message:', message.type);
+  console.log('[dddd-alpah-extension] Received message:', message.type);
 
   if (message.type === 'RUN_TASK') {
     void handleAutomation().catch((error: unknown) => {
       const messageText = error instanceof Error ? error.message : String(error);
       // eslint-disable-next-line no-console
-      console.error('[alpha-auto-bot] RUN_TASK error:', messageText);
+      console.error('[dddd-alpah-extension] RUN_TASK error:', messageText);
       void postRuntimeMessage({
         type: 'TASK_ERROR',
         payload: { message: messageText },
@@ -54,11 +313,11 @@ chrome.runtime.onMessage.addListener((message: RuntimeMessage, _sender, sendResp
 
   if (message.type === 'RUN_TASK_ONCE') {
     // eslint-disable-next-line no-console
-    console.log('[alpha-auto-bot] Starting manual run');
+    console.log('[dddd-alpah-extension] Starting manual run');
     void handleManualRun().catch((error: unknown) => {
       const messageText = error instanceof Error ? error.message : String(error);
       // eslint-disable-next-line no-console
-      console.error('[alpha-auto-bot] RUN_TASK_ONCE error:', messageText);
+      console.error('[dddd-alpah-extension] RUN_TASK_ONCE error:', messageText);
       void postRuntimeMessage({
         type: 'TASK_ERROR',
         payload: { message: messageText },
@@ -72,7 +331,7 @@ chrome.runtime.onMessage.addListener((message: RuntimeMessage, _sender, sendResp
   if (message.type === 'REQUEST_TOKEN_SYMBOL') {
     const tokenSymbol = extractTokenSymbol();
     // eslint-disable-next-line no-console
-    console.log('[alpha-auto-bot] Token symbol requested:', tokenSymbol);
+    console.log('[dddd-alpah-extension] Token symbol requested:', tokenSymbol);
     sendResponse({
       acknowledged: Boolean(tokenSymbol),
       tokenSymbol: tokenSymbol ?? null,
@@ -91,11 +350,25 @@ chrome.runtime.onMessage.addListener((message: RuntimeMessage, _sender, sendResp
     }
 
     // eslint-disable-next-line no-console
-    console.log('[alpha-auto-bot] Current balance requested:', balanceValue);
+    console.log('[dddd-alpah-extension] Current balance requested:', balanceValue);
     sendResponse({
       acknowledged: balanceValue !== null,
       currentBalance: balanceValue ?? null,
     });
+    return true;
+  }
+
+  if (message.type === 'FETCH_ORDER_HISTORY') {
+    void (async () => {
+      const targetUrl = message.payload?.url;
+      const response = await performOrderHistoryRequest(targetUrl ?? '');
+      if (response.success) {
+        // eslint-disable-next-line no-console
+        console.log('[dddd-alpah-extension] Order history fetched successfully');
+      }
+      sendResponse(response);
+    })();
+
     return true;
   }
 
@@ -132,15 +405,18 @@ async function sendInitialBalanceUpdate(): Promise<void> {
 
 async function handleAutomation(): Promise<void> {
   // eslint-disable-next-line no-console
-  console.log('[alpha-auto-bot] handleAutomation started, automationEnabled:', automationEnabled);
+  console.log(
+    '[dddd-alpah-extension] handleAutomation started, automationEnabled:',
+    automationEnabled,
+  );
 
   const needsLogin = checkForLoginPrompt();
   if (needsLogin) {
     // eslint-disable-next-line no-console
-    console.warn('[alpha-auto-bot] Login required detected');
+    console.warn('[dddd-alpah-extension] Login required detected');
     await dispatchRuntimeMessage({
       type: 'TASK_ERROR',
-      payload: { message: 'Login required. Please authenticate manually.' },
+      payload: { message: '请先登录币安' },
     });
     loginErrorDispatched = true;
     return;
@@ -149,7 +425,7 @@ async function handleAutomation(): Promise<void> {
   loginErrorDispatched = false;
   if (!automationEnabled) {
     // eslint-disable-next-line no-console
-    console.log('[alpha-auto-bot] Automation disabled, tearing down polling');
+    console.log('[dddd-alpah-extension] Automation disabled, tearing down polling');
     teardownPolling();
     return;
   }
@@ -182,21 +458,25 @@ function checkForLoginPrompt(): boolean {
 async function ensurePolling(): Promise<void> {
   if (!isExtensionContextValid()) {
     // eslint-disable-next-line no-console
-    console.warn('[alpha-auto-bot] Extension context invalid, tearing down');
+    console.warn('[dddd-alpah-extension] Extension context invalid, tearing down');
     teardownPolling();
     return;
   }
 
   if (!automationEnabled) {
     // eslint-disable-next-line no-console
-    console.log('[alpha-auto-bot] Automation not enabled, tearing down');
+    console.log('[dddd-alpah-extension] Automation not enabled, tearing down');
     teardownPolling();
     return;
   }
 
   if (pollingTimerId === undefined) {
     // eslint-disable-next-line no-console
-    console.log('[alpha-auto-bot] Starting polling with interval:', POLLING_INTERVAL_MS, 'ms');
+    console.log(
+      '[dddd-alpah-extension] Starting polling with interval:',
+      POLLING_INTERVAL_MS,
+      'ms',
+    );
     pollingTimerId = window.setInterval(() => {
       void runEvaluationCycle(true, { placeOrder: true });
     }, POLLING_INTERVAL_MS);
@@ -215,21 +495,21 @@ async function runEvaluationCycle(
 ): Promise<void> {
   if (!isExtensionContextValid()) {
     // eslint-disable-next-line no-console
-    console.warn('[alpha-auto-bot] Extension context invalid in evaluation cycle');
+    console.warn('[dddd-alpah-extension] Extension context invalid in evaluation cycle');
     teardownPolling();
     return;
   }
 
   if (evaluationInProgress) {
     // eslint-disable-next-line no-console
-    console.log('[alpha-auto-bot] Evaluation already in progress, skipping');
+    console.log('[dddd-alpah-extension] Evaluation already in progress, skipping');
     return;
   }
 
   evaluationInProgress = true;
   // eslint-disable-next-line no-console
   console.log(
-    '[alpha-auto-bot] Starting evaluation cycle, placeOrder:',
+    '[dddd-alpah-extension] Starting evaluation cycle, placeOrder:',
     options.placeOrder !== false,
   );
 
@@ -238,7 +518,7 @@ async function runEvaluationCycle(
 
     if (requireAutomationEnabled && !automationEnabled) {
       // eslint-disable-next-line no-console
-      console.log('[alpha-auto-bot] Automation disabled during evaluation, tearing down');
+      console.log('[dddd-alpah-extension] Automation disabled during evaluation, tearing down');
       teardownPolling();
       return;
     }
@@ -246,10 +526,10 @@ async function runEvaluationCycle(
     if (checkForLoginPrompt()) {
       if (!loginErrorDispatched) {
         // eslint-disable-next-line no-console
-        console.warn('[alpha-auto-bot] Login prompt detected during evaluation');
+        console.warn('[dddd-alpah-extension] Login prompt detected during evaluation');
         await dispatchRuntimeMessage({
           type: 'TASK_ERROR',
-          payload: { message: 'Login required. Please authenticate manually.' },
+          payload: { message: '请先登录币安' },
         });
         loginErrorDispatched = true;
       }
@@ -260,7 +540,7 @@ async function runEvaluationCycle(
 
     const result = await executePrimaryTask({ placeOrder });
     // eslint-disable-next-line no-console
-    console.log('[alpha-auto-bot] Task completed:', result.success, result.details);
+    console.log('[dddd-alpah-extension] Task completed:', result.success, result.details);
     await dispatchRuntimeMessage({
       type: 'TASK_COMPLETE',
       payload: result,
@@ -268,7 +548,7 @@ async function runEvaluationCycle(
   } catch (error) {
     const messageText = error instanceof Error ? error.message : String(error);
     // eslint-disable-next-line no-console
-    console.error('[alpha-auto-bot] Evaluation cycle error:', messageText);
+    console.error('[dddd-alpah-extension] Evaluation cycle error:', messageText);
     await dispatchRuntimeMessage({
       type: 'TASK_ERROR',
       payload: { message: messageText },
@@ -286,12 +566,12 @@ async function executePrimaryTask(
   options: TaskExecutionOptions = {},
 ): Promise<{ success: boolean; details?: string; meta?: TaskResultMeta }> {
   // eslint-disable-next-line no-console
-  console.log('[alpha-auto-bot] executePrimaryTask started');
+  console.log('[dddd-alpah-extension] executePrimaryTask started');
 
   const panel = findTradeHistoryPanel();
   if (!panel) {
     // eslint-disable-next-line no-console
-    console.error('[alpha-auto-bot] Trade history panel not found');
+    console.error('[dddd-alpah-extension] Trade history panel not found');
     return {
       success: false,
       details: 'Unable to locate limit trade history panel.',
@@ -300,40 +580,69 @@ async function executePrimaryTask(
 
   const trades = extractTradeHistorySamples(panel);
   // eslint-disable-next-line no-console
-  console.log('[alpha-auto-bot] Extracted trades:', trades.length);
+  console.log('[dddd-alpah-extension] Extracted trades:', trades.length);
   if (!trades.length) {
     return { success: false, details: 'No limit trade entries detected.' };
   }
 
   const tokenSymbol = extractTokenSymbol();
   // eslint-disable-next-line no-console
-  console.log('[alpha-auto-bot] Token symbol:', tokenSymbol);
+  console.log('[dddd-alpah-extension] Token symbol:', tokenSymbol);
 
   const averagePrice = calculateVolumeWeightedAverage(trades);
   if (averagePrice === null) {
     // eslint-disable-next-line no-console
-    console.error('[alpha-auto-bot] Failed to calculate VWAP');
+    console.error('[dddd-alpah-extension] Failed to calculate VWAP');
     return { success: false, details: 'Failed to compute average price.' };
   }
 
   // eslint-disable-next-line no-console
-  console.log('[alpha-auto-bot] Calculated VWAP:', averagePrice);
+  console.log('[dddd-alpah-extension] Calculated VWAP:', averagePrice);
 
   const tradeCount = trades.length;
   const precision = averagePrice < 1 ? 8 : 6;
   const formattedAverage = averagePrice.toFixed(precision);
   const detailParts = [`VWAP across ${tradeCount} trades: ${formattedAverage}`];
 
-  const shouldPlaceOrder = options.placeOrder !== false;
+  let shouldPlaceOrder = options.placeOrder !== false;
+  let orderSkipReason: 'manual' | 'points' | 'limit' | null = shouldPlaceOrder ? null : 'manual';
+  let latestOrderHistorySnapshot: OrderHistorySnapshotPayload | null = null;
   let orderResult: OrderPlacementResult | undefined;
-  let buyVolumeDelta: number | undefined;
-  let successfulTradesDelta: number | undefined;
   let currentBalanceSnapshot: number | undefined;
+
+  try {
+    latestOrderHistorySnapshot = await refreshOrderHistorySnapshotForAutomation();
+    if (latestOrderHistorySnapshot) {
+      // eslint-disable-next-line no-console
+      console.log('[dddd-alpah-extension] Order history snapshot', latestOrderHistorySnapshot);
+
+      if (latestOrderHistorySnapshot.buyOrderCount >= MAX_SUCCESSFUL_TRADES) {
+        detailParts.push(SUCCESSFUL_TRADES_LIMIT_MESSAGE);
+        shouldPlaceOrder = false;
+        orderSkipReason = 'limit';
+      } else if (latestOrderHistorySnapshot.alphaPoints >= pointsTarget) {
+        if (shouldPlaceOrder) {
+          detailParts.push(
+            `Points target reached (${latestOrderHistorySnapshot.alphaPoints} ≥ ${pointsTarget}). Order placement skipped.`,
+          );
+        }
+        shouldPlaceOrder = false;
+        orderSkipReason = 'points';
+      }
+    }
+  } catch (error) {
+    const messageText = error instanceof Error ? error.message : String(error);
+    // eslint-disable-next-line no-console
+    console.warn(
+      '[dddd-alpah-extension] Failed to refresh order history before placement:',
+      messageText,
+    );
+  }
 
   if (shouldPlaceOrder) {
     // eslint-disable-next-line no-console
     console.log(
-      '[alpha-auto-bot] Attempting to place order, priceOffsetPercent:',
+      '[dddd-alpah-extension] Attempting to place order, priceOffsetPercent:',
       priceOffsetPercent,
     );
     try {
@@ -342,27 +651,17 @@ async function executePrimaryTask(
         priceOffsetPercent,
       });
       // eslint-disable-next-line no-console
-      console.log('[alpha-auto-bot] Order result:', orderResult.status, orderResult.reason);
+      console.log('[dddd-alpah-extension] Order result:', orderResult.status, orderResult.reason);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       // eslint-disable-next-line no-console
-      console.error('[alpha-auto-bot] Order placement error:', message);
+      console.error('[dddd-alpah-extension] Order placement error:', message);
       return { success: false, details: `Order placement failed: ${message}` };
     }
 
     if (orderResult) {
       if (orderResult.status === 'placed') {
-        const placedVolume = orderResult.buyVolume;
-        if (typeof placedVolume === 'number' && Number.isFinite(placedVolume) && placedVolume > 0) {
-          const scaledVolume = placedVolume * Math.max(1, pointsFactor);
-          buyVolumeDelta = scaledVolume;
-          detailParts.push(
-            `Placed limit and reverse orders. Recorded buy volume: ${scaledVolume.toFixed(2)} USDT.`,
-          );
-        } else {
-          detailParts.push('Placed limit and reverse orders.');
-        }
-        successfulTradesDelta = 1;
+        detailParts.push('Placed limit and reverse orders.');
       } else {
         const reason = orderResult.reason?.trim();
         if (reason) {
@@ -370,7 +669,7 @@ async function executePrimaryTask(
         }
       }
     }
-  } else {
+  } else if (orderSkipReason === 'manual') {
     detailParts.push('Order placement skipped (manual refresh).');
   }
 
@@ -387,11 +686,10 @@ async function executePrimaryTask(
   }
 
   // eslint-disable-next-line no-console
-  console.log('[alpha-auto-bot] Limit VWAP', {
+  console.log('[dddd-alpah-extension] Limit VWAP', {
     averagePrice,
     formattedAverage,
     tokenSymbol: tokenSymbol ?? null,
-    buyVolumeDelta: buyVolumeDelta ?? null,
     orderStatus: shouldPlaceOrder ? (orderResult?.status ?? 'skipped') : 'manual-skip',
     orderReason: shouldPlaceOrder ? (orderResult?.reason ?? null) : 'manual refresh',
     timestamp: new Date().toISOString(),
@@ -404,14 +702,6 @@ async function executePrimaryTask(
 
   if (tokenSymbol) {
     meta.tokenSymbol = tokenSymbol;
-  }
-
-  if (buyVolumeDelta !== undefined) {
-    meta.buyVolumeDelta = buyVolumeDelta;
-  }
-
-  if (successfulTradesDelta !== undefined) {
-    meta.successfulTradesDelta = successfulTradesDelta;
   }
 
   if (
@@ -442,7 +732,7 @@ async function dispatchRuntimeMessage(message: RuntimeMessage): Promise<void> {
     await postRuntimeMessage(message);
   } catch (error) {
     // eslint-disable-next-line no-console
-    console.warn('[alpha-auto-bot] Failed to post runtime message', error);
+    console.warn('[dddd-alpah-extension] Failed to post runtime message', error);
 
     const messageText = error instanceof Error ? error.message : String(error ?? '');
     if (/extension context invalidated/i.test(messageText)) {
@@ -587,12 +877,12 @@ async function ensureLimitOrderPlaced(params: {
   priceOffsetPercent: number;
 }): Promise<OrderPlacementResult> {
   // eslint-disable-next-line no-console
-  console.log('[alpha-auto-bot] ensureLimitOrderPlaced started');
+  console.log('[dddd-alpah-extension] ensureLimitOrderPlaced started');
 
   const openOrdersRoot = getOpenOrdersRoot();
   if (!openOrdersRoot) {
     // eslint-disable-next-line no-console
-    console.error('[alpha-auto-bot] Open orders root not found');
+    console.error('[dddd-alpah-extension] Open orders root not found');
     throw new Error('Open orders section unavailable.');
   }
 
@@ -600,7 +890,7 @@ async function ensureLimitOrderPlaced(params: {
 
   const orderState = await resolveLimitOrderState(openOrdersRoot);
   // eslint-disable-next-line no-console
-  console.log('[alpha-auto-bot] Order state:', orderState);
+  console.log('[dddd-alpah-extension] Order state:', orderState);
 
   if (orderState === 'non-empty') {
     return {
@@ -616,7 +906,7 @@ async function ensureLimitOrderPlaced(params: {
   const now = Date.now();
   const timeSinceLastOrder = now - lastOrderPlacedAt;
   // eslint-disable-next-line no-console
-  console.log('[alpha-auto-bot] Time since last order:', timeSinceLastOrder, 'ms');
+  console.log('[dddd-alpah-extension] Time since last order:', timeSinceLastOrder, 'ms');
 
   if (timeSinceLastOrder < ORDER_PLACEMENT_COOLDOWN_MS) {
     return {
@@ -628,13 +918,13 @@ async function ensureLimitOrderPlaced(params: {
   const orderPanel = getTradingFormPanel();
   if (!orderPanel) {
     // eslint-disable-next-line no-console
-    console.error('[alpha-auto-bot] Trading form panel not found');
+    console.error('[dddd-alpah-extension] Trading form panel not found');
     throw new Error('Trading form panel not found.');
   }
 
   const availableUsdt = extractAvailableUsdt(orderPanel);
   // eslint-disable-next-line no-console
-  console.log('[alpha-auto-bot] Available USDT:', availableUsdt);
+  console.log('[dddd-alpah-extension] Available USDT:', availableUsdt);
 
   if (availableUsdt === null) {
     throw new Error('Unable to determine available USDT balance.');
@@ -712,7 +1002,7 @@ async function resolveLimitOrderState(
 function detectLimitOrderState(root: HTMLElement): 'empty' | 'non-empty' | 'unknown' {
   const container = getLimitOrdersContainer(root);
   if (!container) {
-    console.log('[alpha-auto-bot] Limit orders container not found');
+    console.log('[dddd-alpah-extension] Limit orders container not found');
     return 'unknown';
   }
 
@@ -720,18 +1010,18 @@ function detectLimitOrderState(root: HTMLElement): 'empty' | 'non-empty' | 'unkn
   const emptyLabel = locale === 'zh-CN' ? '无进行中的订单' : 'No Ongoing Orders';
   const emptyNode = findElementWithExactText(container, emptyLabel);
   if (emptyNode) {
-    console.log('[alpha-auto-bot] Limit orders container found empty');
+    console.log('[dddd-alpah-extension] Limit orders container found empty');
     return 'empty';
   }
 
   const rowCandidates = container.querySelectorAll('[data-row-index],[role="row"],table tbody tr');
   for (const candidate of Array.from(rowCandidates)) {
     if (candidate.textContent && candidate.textContent.trim().length > 0) {
-      console.log('[alpha-auto-bot] Limit orders container found non-empty');
+      console.log('[dddd-alpah-extension] Limit orders container found non-empty');
       return 'non-empty';
     }
   }
-  console.log('[alpha-auto-bot] Limit orders container unknown');
+  console.log('[dddd-alpah-extension] Limit orders container unknown');
 
   return 'unknown';
 }
@@ -764,7 +1054,7 @@ function getTradingFormPanel(): HTMLElement | null {
 function teardownPolling(): void {
   if (pollingTimerId !== undefined) {
     // eslint-disable-next-line no-console
-    console.log('[alpha-auto-bot] Tearing down polling');
+    console.log('[dddd-alpah-extension] Tearing down polling');
     clearInterval(pollingTimerId);
     pollingTimerId = undefined;
   }
@@ -789,12 +1079,18 @@ function initializeAutomationStateWatcher(): void {
   void refreshAutomationState();
 
   chrome.storage.onChanged.addListener((changes, areaName) => {
-    if (areaName !== 'local' || !(STORAGE_KEY in changes)) {
+    if (areaName !== 'local') {
       return;
     }
 
-    const newValue = changes[STORAGE_KEY]?.newValue;
-    applyAutomationState(newValue);
+    if (STORAGE_KEY in changes) {
+      const newValue = changes[STORAGE_KEY]?.newValue;
+      applyAutomationState(newValue);
+    }
+
+    if (TOKEN_DIRECTORY_STORAGE_KEY in changes) {
+      invalidateTokenDirectoryCache();
+    }
   });
 }
 
@@ -802,6 +1098,7 @@ function applyAutomationState(value: unknown): void {
   let nextEnabled = false;
   let nextPriceOffset = DEFAULT_PRICE_OFFSET_PERCENT;
   let nextPointsFactor = DEFAULT_POINTS_FACTOR;
+  let nextPointsTarget = DEFAULT_POINTS_TARGET;
 
   if (value && typeof value === 'object') {
     const record = value as { isEnabled?: unknown; settings?: unknown };
@@ -813,26 +1110,32 @@ function applyAutomationState(value: unknown): void {
 
       const factorCandidate = (record.settings as { pointsFactor?: unknown }).pointsFactor;
       nextPointsFactor = extractPointsFactor(factorCandidate);
+
+      const targetCandidate = (record.settings as { pointsTarget?: unknown }).pointsTarget;
+      nextPointsTarget = extractPointsTarget(targetCandidate);
     }
   }
 
   const stateChanged =
     automationEnabled !== nextEnabled ||
     priceOffsetPercent !== nextPriceOffset ||
-    pointsFactor !== nextPointsFactor;
+    pointsFactor !== nextPointsFactor ||
+    pointsTarget !== nextPointsTarget;
 
   if (stateChanged) {
     // eslint-disable-next-line no-console
-    console.log('[alpha-auto-bot] Automation state updated:', {
+    console.log('[dddd-alpah-extension] Automation state updated:', {
       enabled: nextEnabled,
       priceOffsetPercent: nextPriceOffset,
       pointsFactor: nextPointsFactor,
+      pointsTarget: nextPointsTarget,
     });
   }
 
   automationEnabled = nextEnabled;
   priceOffsetPercent = nextPriceOffset;
   pointsFactor = nextPointsFactor;
+  pointsTarget = nextPointsTarget;
 
   if (!automationEnabled) {
     teardownPolling();
@@ -858,6 +1161,8 @@ function extractPriceOffsetPercent(value: unknown): number {
 
 const MIN_POINTS_FACTOR = 1;
 const MAX_POINTS_FACTOR = 1000;
+const MIN_POINTS_TARGET = 1;
+const MAX_POINTS_TARGET = 1000;
 
 function extractPointsFactor(value: unknown): number {
   if (value === undefined || value === null) {
@@ -910,6 +1215,41 @@ function clampPointsFactor(value: number): number {
   return floored;
 }
 
+function extractPointsTarget(value: unknown): number {
+  if (value === undefined || value === null) {
+    return DEFAULT_POINTS_TARGET;
+  }
+
+  if (typeof value === 'number') {
+    return clampPointsTarget(value);
+  }
+
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) {
+    return DEFAULT_POINTS_TARGET;
+  }
+
+  return clampPointsTarget(parsed);
+}
+
+function clampPointsTarget(value: number): number {
+  if (!Number.isFinite(value)) {
+    return DEFAULT_POINTS_TARGET;
+  }
+
+  const floored = Math.floor(value);
+
+  if (floored < MIN_POINTS_TARGET) {
+    return MIN_POINTS_TARGET;
+  }
+
+  if (floored > MAX_POINTS_TARGET) {
+    return MAX_POINTS_TARGET;
+  }
+
+  return floored;
+}
+
 async function refreshAutomationState(): Promise<void> {
   await new Promise<void>((resolve) => {
     chrome.storage.local.get(STORAGE_KEY, (result) => {
@@ -941,7 +1281,7 @@ async function configureLimitOrder(params: {
   const reversePriceValue = formatNumberFixedDecimals(reversePrice, 8);
 
   // eslint-disable-next-line no-console
-  console.log('[alpha-auto-bot] Configuring order:', {
+  console.log('[dddd-alpah-extension] Configuring order:', {
     basePrice: price,
     offsetPercent: clampedOffsetPercent,
     buyPrice: buyPriceValue,
@@ -954,18 +1294,18 @@ async function configureLimitOrder(params: {
   const priceInput = orderPanel.querySelector<HTMLInputElement>('#limitPrice');
   if (!priceInput) {
     // eslint-disable-next-line no-console
-    console.error('[alpha-auto-bot] Limit price input not found');
+    console.error('[dddd-alpah-extension] Limit price input not found');
     throw new Error('Limit price input not found.');
   }
   // eslint-disable-next-line no-console
-  console.log('[alpha-auto-bot] Setting buy price:', buyPriceValue);
+  console.log('[dddd-alpah-extension] Setting buy price:', buyPriceValue);
   await waitRandomDelay();
   setReactInputValue(priceInput, buyPriceValue);
   await waitForAnimationFrame();
 
   const toggleChanged = ensureReverseOrderToggle(orderPanel);
   // eslint-disable-next-line no-console
-  console.log('[alpha-auto-bot] Reverse order toggle changed:', toggleChanged);
+  console.log('[dddd-alpah-extension] Reverse order toggle changed:', toggleChanged);
   if (toggleChanged) {
     await waitForAnimationFrame();
   }
@@ -974,11 +1314,11 @@ async function configureLimitOrder(params: {
   const slider = orderPanel.querySelector<HTMLInputElement>('input.bn-slider');
   if (!slider) {
     // eslint-disable-next-line no-console
-    console.error('[alpha-auto-bot] Order amount slider not found');
+    console.error('[dddd-alpah-extension] Order amount slider not found');
     throw new Error('Order amount slider not found.');
   }
   // eslint-disable-next-line no-console
-  console.log('[alpha-auto-bot] Setting slider to 100%');
+  console.log('[dddd-alpah-extension] Setting slider to 100%');
   slider.focus();
   slider.value = '100';
   slider.dispatchEvent(new Event('input', { bubbles: true }));
@@ -993,11 +1333,11 @@ async function configureLimitOrder(params: {
   );
   if (!reversePriceInput) {
     // eslint-disable-next-line no-console
-    console.error('[alpha-auto-bot] Reverse order price input not found');
+    console.error('[dddd-alpah-extension] Reverse order price input not found');
     throw new Error('Reverse order price input not found.');
   }
   // eslint-disable-next-line no-console
-  console.log('[alpha-auto-bot] Setting reverse price:', reversePriceValue);
+  console.log('[dddd-alpah-extension] Setting reverse price:', reversePriceValue);
   setReactInputValue(reversePriceInput, reversePriceValue);
   await waitForAnimationFrame();
   await waitRandomDelay();
@@ -1005,12 +1345,12 @@ async function configureLimitOrder(params: {
   const buyButton = orderPanel.querySelector<HTMLButtonElement>('button.bn-button__buy');
   if (!buyButton) {
     // eslint-disable-next-line no-console
-    console.error('[alpha-auto-bot] Buy button not found');
+    console.error('[dddd-alpah-extension] Buy button not found');
     throw new Error('Buy button not found.');
   }
 
   // eslint-disable-next-line no-console
-  console.log('[alpha-auto-bot] Clicking buy button');
+  console.log('[dddd-alpah-extension] Clicking buy button');
   buyButton.click();
   scheduleOrderConfirmationClick();
 
@@ -1021,13 +1361,13 @@ async function ensureLimitOrderMode(orderPanel: HTMLElement): Promise<void> {
   const buyTab = findOrderPanelTab(orderPanel, '#bn-tab-0.bn-tab__buySell');
   if (!buyTab) {
     // eslint-disable-next-line no-console
-    console.error('[alpha-auto-bot] Buy tab not found');
+    console.error('[dddd-alpah-extension] Buy tab not found');
     throw new Error('Buy tab not found.');
   }
 
   if (buyTab.getAttribute('aria-selected') !== 'true') {
     // eslint-disable-next-line no-console
-    console.log('[alpha-auto-bot] Selecting buy tab');
+    console.log('[dddd-alpah-extension] Selecting buy tab');
     buyTab.click();
     await waitForAnimationFrame();
     await waitRandomDelay(200, 400);
@@ -1038,13 +1378,13 @@ async function ensureLimitOrderMode(orderPanel: HTMLElement): Promise<void> {
     findOrderPanelTab(orderPanel, '#bn-tab-LIMIT');
   if (!limitTab) {
     // eslint-disable-next-line no-console
-    console.error('[alpha-auto-bot] Limit tab not found');
+    console.error('[dddd-alpah-extension] Limit tab not found');
     throw new Error('Limit tab not found.');
   }
 
   if (limitTab.getAttribute('aria-selected') !== 'true') {
     // eslint-disable-next-line no-console
-    console.log('[alpha-auto-bot] Selecting limit tab');
+    console.log('[dddd-alpah-extension] Selecting limit tab');
     limitTab.click();
     await waitForAnimationFrame();
     await waitRandomDelay(200, 400);
@@ -1109,7 +1449,11 @@ function scheduleOrderConfirmationClick(): void {
   const INITIAL_DELAY_MS = randomIntInRange(300, 800);
 
   // eslint-disable-next-line no-console
-  console.log('[alpha-auto-bot] Scheduling confirmation click with delay:', INITIAL_DELAY_MS, 'ms');
+  console.log(
+    '[dddd-alpah-extension] Scheduling confirmation click with delay:',
+    INITIAL_DELAY_MS,
+    'ms',
+  );
 
   const runAttempts = () => {
     const start = Date.now();
@@ -1121,7 +1465,7 @@ function scheduleOrderConfirmationClick(): void {
       if (confirmButton) {
         // eslint-disable-next-line no-console
         console.log(
-          '[alpha-auto-bot] Confirm button found after',
+          '[dddd-alpah-extension] Confirm button found after',
           attemptCount,
           'attempts, clicking',
         );
@@ -1133,7 +1477,11 @@ function scheduleOrderConfirmationClick(): void {
         window.setTimeout(attempt, ATTEMPT_INTERVAL_MS);
       } else {
         // eslint-disable-next-line no-console
-        console.warn('[alpha-auto-bot] Confirm button not found after', attemptCount, 'attempts');
+        console.warn(
+          '[dddd-alpah-extension] Confirm button not found after',
+          attemptCount,
+          'attempts',
+        );
       }
     };
 

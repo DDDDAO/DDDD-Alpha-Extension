@@ -1,4 +1,10 @@
-import { DEFAULT_AUTOMATION, DEFAULT_POINTS_TARGET } from '../config/defaults.js';
+import {
+  DEFAULT_AUTOMATION,
+  DEFAULT_POINTS_TARGET,
+  MAX_SUCCESSFUL_TRADES,
+  SUCCESSFUL_TRADES_LIMIT_MESSAGE,
+} from '../config/defaults.js';
+import { calculateAlphaPointStats } from '../lib/alphaPoints.js';
 import type { RuntimeMessage } from '../lib/messages.js';
 import { getSchedulerState, updateSchedulerState } from '../lib/storage.js';
 import { getTab } from '../lib/tabs.js';
@@ -124,28 +130,124 @@ chrome.runtime.onMessage.addListener((message: RuntimeMessage, _sender, sendResp
     return true;
   }
 
+  if (message.type === 'ORDER_HISTORY_SNAPSHOT') {
+    const payload = message.payload;
+    const dateKeyCandidate = typeof payload.date === 'string' ? payload.date : undefined;
+    const now =
+      typeof payload.fetchedAt === 'number' && Number.isFinite(payload.fetchedAt)
+        ? new Date(payload.fetchedAt)
+        : new Date();
+    const timestamp = now.toISOString();
+    const dateKey = dateKeyCandidate ?? timestamp.slice(0, 10);
+    const totalBuyVolume = normalizeVolumeDelta(payload.totalBuyVolume);
+    const buyOrderCount = normalizeCountDelta(payload.buyOrderCount);
+    const { points: alphaPoints, nextThresholdDelta } = calculateAlphaPointStats(totalBuyVolume);
+    let autoStopTriggered = false;
+
+    void updateSchedulerState((state) => {
+      const previousDaily = state.dailyBuyVolume;
+      const isSameDay = previousDaily?.date === dateKey;
+      const existingFirstBalance =
+        isSameDay && typeof previousDaily?.firstBalance === 'number'
+          ? previousDaily.firstBalance
+          : undefined;
+
+      const nextDaily = {
+        date: dateKey,
+        total: totalBuyVolume,
+        alphaPoints,
+        nextThresholdDelta,
+        tradeCount: buyOrderCount,
+        firstBalance: existingFirstBalance,
+      } as const;
+
+      const configuredTarget =
+        typeof state.settings?.pointsTarget === 'number'
+          ? state.settings.pointsTarget
+          : DEFAULT_POINTS_TARGET;
+      const pointsTargetReached = alphaPoints >= configuredTarget;
+      const tradeLimitReached = buyOrderCount >= MAX_SUCCESSFUL_TRADES;
+      const shouldAutoStop = state.isEnabled && (pointsTargetReached || tradeLimitReached);
+      autoStopTriggered = shouldAutoStop;
+
+      const autoStopMessages: string[] = [];
+
+      if (pointsTargetReached) {
+        autoStopMessages.push(
+          `Points target reached: ${alphaPoints} ≥ ${configuredTarget}. Automation paused.`,
+        );
+      }
+
+      if (tradeLimitReached) {
+        autoStopMessages.push(SUCCESSFUL_TRADES_LIMIT_MESSAGE);
+      }
+
+      const previousTokenSymbol = state.tokenSymbol ?? state.lastResult?.tokenSymbol;
+      const resolvedTokenSymbol = previousTokenSymbol;
+      const previousDetails = state.lastResult?.details;
+      const detailMessages: string[] = [];
+
+      if (previousDetails) {
+        detailMessages.push(previousDetails);
+      }
+
+      if (autoStopMessages.length > 0) {
+        detailMessages.push(...autoStopMessages);
+      }
+
+      const mergedDetails =
+        detailMessages.length > 0 ? detailMessages.join(' • ') : previousDetails;
+
+      const nextLastResult = {
+        timestamp,
+        details: mergedDetails,
+        averagePrice: state.lastResult?.averagePrice,
+        tradeCount: state.lastResult?.tradeCount,
+        buyVolumeToday: nextDaily.total,
+        alphaPointsToday: nextDaily.alphaPoints,
+        buyVolumeToNextPoint: nextDaily.nextThresholdDelta,
+        successfulTradesToday: nextDaily.tradeCount,
+        tokenSymbol: resolvedTokenSymbol,
+        firstBalanceToday: nextDaily.firstBalance,
+      } as const;
+
+      return {
+        ...state,
+        isEnabled: shouldAutoStop ? false : state.isEnabled,
+        lastError: shouldAutoStop ? undefined : state.lastError,
+        tokenSymbol: resolvedTokenSymbol,
+        dailyBuyVolume: nextDaily,
+        lastResult: nextLastResult,
+        requiresLogin: false,
+      };
+    });
+
+    sendResponse({ acknowledged: true });
+    if (autoStopTriggered) {
+      void clearAutomationAlarm();
+    }
+    return true;
+  }
+
   if (message.type === 'TASK_COMPLETE') {
     const timestamp = new Date().toISOString();
     const { success, details, meta } = message.payload;
     const normalizedDetails = normalizeDetail(details);
     const lastError = success ? undefined : (normalizedDetails ?? 'Unknown error');
     const buyVolumeDelta = normalizeVolumeDelta(meta?.buyVolumeDelta);
-    const tradeDelta = normalizeCountDelta(meta?.successfulTradesDelta);
     const currentBalanceValue = normalizeBalance(
       meta?.currentBalance ?? meta?.availableBalanceBeforeOrder,
     );
     const dateKey = timestamp.slice(0, 10);
     const tokenSymbol = normalizeTokenSymbol(meta?.tokenSymbol);
     let autoStopTriggered = false;
-    let autoStopMessage: string | undefined;
 
     if (success && meta?.averagePrice !== undefined) {
       // eslint-disable-next-line no-console
-      console.log('[alpha-auto-bot] Last VWAP result', {
+      console.log('[dddd-alpah-extension] Last VWAP result', {
         averagePrice: meta.averagePrice,
         tradeCount: meta.tradeCount,
         buyVolumeDelta,
-        successfulTradesDelta: tradeDelta,
         tokenSymbol,
         details,
         timestamp,
@@ -160,7 +262,6 @@ chrome.runtime.onMessage.addListener((message: RuntimeMessage, _sender, sendResp
       const updatedTotal = existingTotal + buyVolumeDelta;
       const existingTrades =
         isSameDay && typeof previousDaily?.tradeCount === 'number' ? previousDaily.tradeCount : 0;
-      const updatedTrades = existingTrades + tradeDelta;
       const existingFirstBalance =
         isSameDay && typeof previousDaily?.firstBalance === 'number'
           ? previousDaily.firstBalance
@@ -184,11 +285,29 @@ chrome.runtime.onMessage.addListener((message: RuntimeMessage, _sender, sendResp
         typeof state.settings?.pointsTarget === 'number'
           ? state.settings.pointsTarget
           : DEFAULT_POINTS_TARGET;
-      const shouldAutoStop = state.isEnabled && alphaPoints >= configuredTarget;
+      const lastResultTimestamp = state.lastResult?.timestamp;
+      const lastResultDateMatches =
+        typeof lastResultTimestamp === 'string' && lastResultTimestamp.slice(0, 10) === dateKey;
+      const lastSnapshotTrades =
+        lastResultDateMatches && typeof state.lastResult?.successfulTradesToday === 'number'
+          ? state.lastResult.successfulTradesToday
+          : 0;
+      const nextTradeCount = Math.max(existingTrades, lastSnapshotTrades);
+      const pointsTargetReached = alphaPoints >= configuredTarget;
+      const tradeLimitReached = nextTradeCount >= MAX_SUCCESSFUL_TRADES;
+      const shouldAutoStop = state.isEnabled && (pointsTargetReached || tradeLimitReached);
       autoStopTriggered = shouldAutoStop;
 
-      if (shouldAutoStop) {
-        autoStopMessage = `Points target reached: ${alphaPoints} ≥ ${configuredTarget}. Automation paused.`;
+      const autoStopMessages: string[] = [];
+
+      if (pointsTargetReached) {
+        autoStopMessages.push(
+          `Points target reached: ${alphaPoints} ≥ ${configuredTarget}. Automation paused.`,
+        );
+      }
+
+      if (tradeLimitReached) {
+        autoStopMessages.push(SUCCESSFUL_TRADES_LIMIT_MESSAGE);
       }
 
       const detailMessages: string[] = [];
@@ -196,8 +315,8 @@ chrome.runtime.onMessage.addListener((message: RuntimeMessage, _sender, sendResp
         detailMessages.push(normalizedDetails);
       }
 
-      if (autoStopMessage) {
-        detailMessages.push(autoStopMessage);
+      if (autoStopMessages.length > 0) {
+        detailMessages.push(...autoStopMessages);
       }
 
       const mergedDetails = detailMessages.length > 0 ? detailMessages.join(' • ') : undefined;
@@ -207,7 +326,7 @@ chrome.runtime.onMessage.addListener((message: RuntimeMessage, _sender, sendResp
         total: updatedTotal,
         alphaPoints,
         nextThresholdDelta,
-        tradeCount: updatedTrades,
+        tradeCount: nextTradeCount,
         firstBalance: nextFirstBalance,
       } as const;
 
@@ -231,6 +350,7 @@ chrome.runtime.onMessage.addListener((message: RuntimeMessage, _sender, sendResp
           tokenSymbol: resolvedTokenSymbol,
           firstBalanceToday: nextDaily.firstBalance,
         },
+        requiresLogin: false,
       };
     });
     sendResponse({ acknowledged: true });
@@ -247,6 +367,7 @@ chrome.runtime.onMessage.addListener((message: RuntimeMessage, _sender, sendResp
       isRunning: false,
       lastError: normalizedMessage ?? 'Unknown error',
       lastRun: state.lastRun,
+      requiresLogin: normalizedMessage === '请先登录币安',
     }));
     sendResponse({ acknowledged: true });
     return true;
@@ -323,7 +444,7 @@ async function scheduleImmediateRun(options: RunOptions = {}): Promise<void> {
     await runAutomationCycle(options);
   } catch (error) {
     // eslint-disable-next-line no-console
-    console.warn('[alpha-auto-bot] Immediate automation run failed', error);
+    console.warn('[dddd-alpah-extension] Immediate automation run failed', error);
   } finally {
     immediateRunScheduled = false;
   }
@@ -412,25 +533,46 @@ async function runAutomationCycle(options: RunOptions = {}): Promise<void> {
 }
 
 async function handleControlStart(tokenAddress?: string, tabId?: number): Promise<void> {
-  await updateSchedulerState((state) => {
-    const sanitizedToken =
-      sanitizeTokenAddress(tokenAddress) ??
-      state.settings.tokenAddress ??
-      DEFAULT_AUTOMATION.tokenAddress;
+  const state = await getSchedulerState();
+  const todayKey = new Date().toISOString().slice(0, 10);
+  let tradesToday = 0;
+
+  if (
+    state.dailyBuyVolume?.date === todayKey &&
+    typeof state.dailyBuyVolume.tradeCount === 'number'
+  ) {
+    tradesToday = state.dailyBuyVolume.tradeCount;
+  } else if (
+    typeof state.lastResult?.successfulTradesToday === 'number' &&
+    typeof state.lastResult?.timestamp === 'string' &&
+    state.lastResult.timestamp.slice(0, 10) === todayKey
+  ) {
+    tradesToday = state.lastResult.successfulTradesToday;
+  }
+
+  if (tradesToday >= MAX_SUCCESSFUL_TRADES) {
+    throw new AutomationMessageError(SUCCESSFUL_TRADES_LIMIT_MESSAGE, 'TRADE_LIMIT_REACHED');
+  }
+
+  const sanitizedTokenOverride = sanitizeTokenAddress(tokenAddress);
+
+  await updateSchedulerState((current) => {
+    const resolvedToken =
+      sanitizedTokenOverride ?? current.settings.tokenAddress ?? DEFAULT_AUTOMATION.tokenAddress;
+
     return {
-      ...state,
+      ...current,
       isEnabled: true,
       settings: {
-        ...state.settings,
-        tokenAddress: sanitizedToken,
+        ...current.settings,
+        tokenAddress: resolvedToken,
       },
     };
   });
   await ensureAlarm();
-  const sanitizedToken = sanitizeTokenAddress(tokenAddress);
   const sanitizedTabId = sanitizeTabId(tabId);
   void scheduleImmediateRun({
-    tokenAddressOverride: sanitizedToken,
+    tokenAddressOverride: sanitizedTokenOverride,
     targetTabId: sanitizedTabId,
   });
 }
@@ -589,26 +731,6 @@ function normalizeTokenSymbol(value: unknown): string | undefined {
   }
 
   return trimmed;
-}
-
-function calculateAlphaPointStats(volume: number): { points: number; nextThresholdDelta: number } {
-  if (!Number.isFinite(volume) || volume <= 0) {
-    return { points: 0, nextThresholdDelta: 2 };
-  }
-
-  if (volume < 2) {
-    return { points: 0, nextThresholdDelta: 2 - volume };
-  }
-
-  const rawPoints = Math.floor(Math.log2(volume));
-  const points = rawPoints > 0 ? rawPoints : 0;
-  const nextThreshold = 2 ** (points + 1);
-  const delta = Math.max(0, nextThreshold - volume);
-
-  return {
-    points,
-    nextThresholdDelta: delta,
-  };
 }
 
 function normalizeError(error: unknown): string {

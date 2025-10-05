@@ -97,6 +97,12 @@ npm run build
   - 总成本：初始余额 - 当前余额
   - 成本比率：磨损百分比
 
+### 空投信息
+
+- **今日空投**：展示当日即可参与的空投项目，含代币、数量、估算价值、阶段、类型等关键信息。
+- **空投预告**：列出未来即将开启的空投，标注预计日期、时间和奖励规模，方便提前准备。
+- **价格参考**：同步展示相关代币的最新价格，快速评估潜在收益。
+
 ### 智能停止机制
 
 - **积分目标达成**：自动停止（默认 15 分 ≈ 32,768 USDT）
@@ -181,6 +187,11 @@ An intelligent Binance Alpha points farming assistant with integrated stability 
   - Current Balance: Real-time updates
   - Total Cost: Initial - Current
   - Cost Ratio: Slippage percentage
+
+### Airdrop Insights
+- **Today’s Airdrops**: Highlights opportunities available right now with token, allocation, estimated value, stage, and type.
+- **Upcoming Airdrops**: Lists scheduled drops with expected date, time, and reward size so you can plan ahead.
+- **Price Snapshot**: Shows the latest token prices to help you gauge potential returns quickly.
 
 ###  Smart Stop Mechanism
 - **Points Target**: Auto-stop at goal (default 15 pts ≈ 32,768 USDT)

@@ -1,4 +1,4 @@
-export const MESSAGE_CHANNEL = 'alpha-auto-bot::channel';
+export const MESSAGE_CHANNEL = 'dddd-alpah-extension::channel';
 
 export interface TaskResultMeta {
   averagePrice?: number;
@@ -8,6 +8,23 @@ export interface TaskResultMeta {
   tokenSymbol?: string;
   availableBalanceBeforeOrder?: number;
   currentBalance?: number;
+}
+
+export interface FetchOrderHistoryResponse {
+  success: boolean;
+  status?: number;
+  data?: unknown;
+  message?: string;
+}
+
+export interface OrderHistorySnapshotPayload {
+  date: string;
+  totalBuyVolume: number;
+  buyOrderCount: number;
+  alphaPoints: number;
+  nextThresholdDelta: number;
+  fetchedAt: number;
+  source?: 'popup' | 'automation';
 }
 
 export type RuntimeMessage =
@@ -22,6 +39,16 @@ export type RuntimeMessage =
     }
   | {
       type: 'REQUEST_CURRENT_BALANCE';
+    }
+  | {
+      type: 'FETCH_ORDER_HISTORY';
+      payload: {
+        url: string;
+      };
+    }
+  | {
+      type: 'ORDER_HISTORY_SNAPSHOT';
+      payload: OrderHistorySnapshotPayload;
     }
   | {
       type: 'BALANCE_UPDATE';

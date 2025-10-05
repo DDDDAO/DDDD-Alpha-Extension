@@ -7,6 +7,7 @@ import {
   InfoCircleOutlined,
   PauseCircleOutlined,
   PlayCircleOutlined,
+  ReloadOutlined,
   SyncOutlined,
   TrophyOutlined,
 } from '@ant-design/icons';
@@ -25,9 +26,18 @@ import {
   Typography,
 } from 'antd';
 import React, { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
-import { STORAGE_KEY } from '../config/storageKey.js';
+import { MAX_SUCCESSFUL_TRADES, SUCCESSFUL_TRADES_LIMIT_MESSAGE } from '../config/defaults.js';
+import { STORAGE_KEY, TOKEN_DIRECTORY_STORAGE_KEY } from '../config/storageKey.js';
 import type { ProcessedAirdrop } from '../lib/airdrop.js';
 import { AIRDROP_STORAGE_KEY, processAirdropApiResponse } from '../lib/airdrop.js';
+import { calculateAlphaPointStats } from '../lib/alphaPoints.js';
+import type {
+  FetchOrderHistoryResponse,
+  OrderHistorySnapshotPayload,
+  RuntimeMessage,
+} from '../lib/messages.js';
+import { postRuntimeMessage } from '../lib/messages.js';
+import { buildOrderHistoryUrl, summarizeOrderHistoryData } from '../lib/orderHistory.js';
 import type { SchedulerState } from '../lib/storage';
 
 const { Text, Link, Title } = Typography;
@@ -61,18 +71,40 @@ interface TokenDirectoryEntry {
   contractAddress: string;
   iconUrl: string | null;
   mulPoint: number | null;
+  alphaId?: string | null;
 }
 
 interface TokenListItem {
-  symbol?: string | null;
-  contractAddress?: string | null;
-  iconUrl?: string | null;
-  mulPoint?: number | string | null;
+  symbol: string;
+  contractAddress: string;
+  iconUrl: string;
+  mulPoint: number;
+  alphaId: string;
 }
 
 interface TokenListResponse {
   code?: string;
   data?: TokenListItem[] | null;
+}
+
+interface TokenDirectoryCachePayload {
+  directory?: Record<string, TokenDirectoryEntry>;
+  updatedAt?: number;
+}
+
+function extractStoredTokenDirectory(value: unknown): Record<string, TokenDirectoryEntry> | null {
+  if (!value || typeof value !== 'object') {
+    return null;
+  }
+
+  const container = value as TokenDirectoryCachePayload;
+  const directoryCandidate = container.directory ?? value;
+
+  if (!directoryCandidate || typeof directoryCandidate !== 'object') {
+    return null;
+  }
+
+  return directoryCandidate as Record<string, TokenDirectoryEntry>;
 }
 
 const FALLBACK_TOKEN_DIRECTORY: Record<string, TokenDirectoryEntry> = {
@@ -162,6 +194,7 @@ export function Popup(): React.ReactElement {
     isSupported: false,
   });
   const [controlsBusy, setControlsBusy] = useState(false);
+  const [resettingInitialBalance, setResettingInitialBalance] = useState(false);
   const [localPriceOffset, setLocalPriceOffset] = useState('0.01');
   const [localPointsFactor, setLocalPointsFactor] = useState('1');
   const [localPointsTarget, setLocalPointsTarget] = useState('15');
@@ -170,10 +203,18 @@ export function Popup(): React.ReactElement {
   const [airdropToday, setAirdropToday] = useState<ProcessedAirdrop[]>([]);
   const [airdropForecast, setAirdropForecast] = useState<ProcessedAirdrop[]>([]);
   const [airdropLoading, setAirdropLoading] = useState(false);
+  const [orderHistoryError, setOrderHistoryError] = useState<string | null>(null);
 
   const isEditingPriceOffset = useRef(false);
   const isEditingPointsFactor = useRef(false);
   const isEditingPointsTarget = useRef(false);
+  const orderHistoryRequestState = useRef<{
+    tabId: number | null;
+    status: 'idle' | 'pending' | 'success';
+  }>({
+    tabId: null,
+    status: 'idle',
+  });
 
   const spreadId = useId();
   const pointsFactorId = useId();
@@ -181,6 +222,23 @@ export function Popup(): React.ReactElement {
 
   const normalizedActiveTokenAddress = activeTab.tokenAddress?.toLowerCase() ?? null;
   const tokenEntries = useMemo(() => Object.values(tokenDirectory), [tokenDirectory]);
+  const tokenDirectoryAlphaIdMap = useMemo(() => {
+    const map: Record<string, TokenDirectoryEntry> = {};
+    for (const entry of Object.values(tokenDirectory)) {
+      if (!entry) {
+        continue;
+      }
+
+      const alphaIdRaw = typeof entry.alphaId === 'string' ? entry.alphaId.trim() : '';
+      if (alphaIdRaw.length === 0) {
+        continue;
+      }
+
+      map[alphaIdRaw.toUpperCase()] = entry;
+    }
+
+    return map;
+  }, [tokenDirectory]);
   const tokenInfoByAddress = useMemo(
     () =>
       normalizedActiveTokenAddress
@@ -267,15 +325,25 @@ export function Popup(): React.ReactElement {
           mulPoint = null;
         }
 
+        const rawAlphaId = typeof token.alphaId === 'string' ? token.alphaId.trim() : '';
+        const alphaId = rawAlphaId.length > 0 ? rawAlphaId.toUpperCase() : null;
+
         nextDirectory[normalizedSymbol] = {
           symbol: normalizedSymbol,
           contractAddress,
           iconUrl,
           mulPoint,
+          alphaId,
         };
       }
 
       setTokenDirectory(nextDirectory);
+      await chrome.storage.local.set({
+        [TOKEN_DIRECTORY_STORAGE_KEY]: {
+          directory: nextDirectory,
+          updatedAt: Date.now(),
+        },
+      });
     } catch (error) {
       console.error('Failed to fetch token list:', error);
     }
@@ -446,13 +514,39 @@ export function Popup(): React.ReactElement {
     void fetchAirdrops(); // 初始加载空投数据
     void fetchTokenDirectory();
 
+    chrome.storage.local.get(TOKEN_DIRECTORY_STORAGE_KEY, (result) => {
+      const storedDirectory = extractStoredTokenDirectory(result[TOKEN_DIRECTORY_STORAGE_KEY]);
+      if (storedDirectory) {
+        setTokenDirectory((prev) => ({
+          ...prev,
+          ...storedDirectory,
+        }));
+      }
+    });
+
     // Listen for storage changes
     const handleStorageChange = (
       changes: { [key: string]: chrome.storage.StorageChange },
       areaName: string,
     ) => {
-      if (areaName === 'local' && STORAGE_KEY in changes) {
+      if (areaName !== 'local') {
+        return;
+      }
+
+      if (STORAGE_KEY in changes) {
         setState(changes[STORAGE_KEY]?.newValue ?? null);
+      }
+
+      if (TOKEN_DIRECTORY_STORAGE_KEY in changes) {
+        const storedDirectory = extractStoredTokenDirectory(
+          changes[TOKEN_DIRECTORY_STORAGE_KEY]?.newValue,
+        );
+        if (storedDirectory) {
+          setTokenDirectory((prev) => ({
+            ...prev,
+            ...storedDirectory,
+          }));
+        }
       }
     };
 
@@ -486,6 +580,117 @@ export function Popup(): React.ReactElement {
       clearInterval(tokenDirectoryInterval);
     };
   }, [loadState, refreshActiveTab, fetchStableCoins, fetchAirdrops, fetchTokenDirectory]);
+
+  useEffect(() => {
+    if (!activeTab.isSupported || typeof activeTab.tabId !== 'number') {
+      orderHistoryRequestState.current = { tabId: null, status: 'idle' };
+      setOrderHistoryError(null);
+      return;
+    }
+
+    const tabId = activeTab.tabId;
+    const currentRequest = orderHistoryRequestState.current;
+
+    if (currentRequest.status === 'pending' && currentRequest.tabId === tabId) {
+      return;
+    }
+
+    if (currentRequest.status === 'success' && currentRequest.tabId === tabId) {
+      return;
+    }
+
+    const now = new Date();
+    const targetUrl = buildOrderHistoryUrl(now);
+    orderHistoryRequestState.current = { tabId, status: 'pending' };
+    setOrderHistoryError(null);
+
+    chrome.tabs.sendMessage(
+      tabId,
+      {
+        type: 'FETCH_ORDER_HISTORY',
+        payload: { url: targetUrl },
+      } satisfies RuntimeMessage,
+      (rawResponse) => {
+        const runtimeError = chrome.runtime.lastError;
+        if (runtimeError) {
+          // eslint-disable-next-line no-console
+          console.error(
+            '[dddd-alpah-extension] Failed to dispatch order history request:',
+            runtimeError.message,
+          );
+          orderHistoryRequestState.current = { tabId: null, status: 'idle' };
+          setOrderHistoryError(runtimeError.message);
+          return;
+        }
+
+        const response = rawResponse as FetchOrderHistoryResponse | undefined;
+        if (response?.success) {
+          orderHistoryRequestState.current = { tabId, status: 'success' };
+          try {
+            const multiplierLookup = (alphaId: string): number => {
+              const entry = tokenDirectoryAlphaIdMap[alphaId] ?? null;
+              if (!entry) {
+                return 1;
+              }
+
+              const rawMultiplier = entry.mulPoint;
+              const numeric =
+                typeof rawMultiplier === 'number'
+                  ? rawMultiplier
+                  : typeof rawMultiplier === 'string'
+                    ? Number(rawMultiplier)
+                    : NaN;
+
+              if (!Number.isFinite(numeric) || numeric <= 0) {
+                return 1;
+              }
+
+              return numeric;
+            };
+
+            const summary = summarizeOrderHistoryData(response.data, multiplierLookup);
+            const { points: alphaPoints, nextThresholdDelta } = calculateAlphaPointStats(
+              summary.totalBuyVolume,
+            );
+
+            const snapshotPayload: OrderHistorySnapshotPayload = {
+              date: new Date(now.getTime()).toISOString().slice(0, 10),
+              totalBuyVolume: summary.totalBuyVolume,
+              buyOrderCount: summary.buyOrderCount,
+              alphaPoints,
+              nextThresholdDelta,
+              fetchedAt: Date.now(),
+              source: 'popup',
+            };
+
+            // eslint-disable-next-line no-console
+            console.log('[dddd-alpah-extension] Order history summary:', snapshotPayload);
+
+            void postRuntimeMessage({
+              type: 'ORDER_HISTORY_SNAPSHOT',
+              payload: snapshotPayload,
+            }).catch((error) => {
+              // eslint-disable-next-line no-console
+              console.warn('[dddd-alpah-extension] Failed to post order history snapshot', error);
+            });
+          } catch (error) {
+            // eslint-disable-next-line no-console
+            console.error(
+              '[dddd-alpah-extension] Failed to process order history response:',
+              error,
+            );
+          }
+          return;
+        }
+
+        const errorMessage = response?.message ?? 'Unknown order history error';
+        orderHistoryRequestState.current = { tabId: null, status: 'idle' };
+        setOrderHistoryError(errorMessage);
+        // eslint-disable-next-line no-console
+        console.error('[dddd-alpah-extension] Order history request failed:', errorMessage);
+      },
+    );
+  }, [activeTab.isSupported, activeTab.tabId, tokenDirectoryAlphaIdMap]);
 
   const storedTokenAddress = getTokenAddress(state);
   const resolvedSymbolCandidate =
@@ -555,6 +760,75 @@ export function Popup(): React.ReactElement {
     },
     [state],
   );
+
+  const handleResetInitialBalance = useCallback(async (): Promise<void> => {
+    const currentBalanceValue =
+      typeof activeTab.currentBalance === 'number' && Number.isFinite(activeTab.currentBalance)
+        ? activeTab.currentBalance
+        : undefined;
+
+    if (currentBalanceValue === undefined || resettingInitialBalance) {
+      return;
+    }
+
+    setResettingInitialBalance(true);
+    try {
+      const todayKey = new Date().toISOString().slice(0, 10);
+      const storageResult = await chrome.storage.local.get(STORAGE_KEY);
+      const storedState = storageResult[STORAGE_KEY] as SchedulerState | undefined;
+      const baseState = storedState ?? {
+        isRunning: false,
+        isEnabled: false,
+        settings: {
+          priceOffsetPercent: DEFAULT_PRICE_OFFSET_PERCENT,
+          tokenAddress: BUILTIN_DEFAULT_TOKEN_ADDRESS,
+          pointsFactor: DEFAULT_POINTS_FACTOR,
+          pointsTarget: DEFAULT_POINTS_TARGET,
+        },
+      };
+
+      const previousDaily = baseState.dailyBuyVolume;
+      const isSameDay = previousDaily?.date === todayKey;
+
+      const nextDaily = {
+        date: todayKey,
+        total: isSameDay && typeof previousDaily?.total === 'number' ? previousDaily.total : 0,
+        alphaPoints:
+          isSameDay && typeof previousDaily?.alphaPoints === 'number'
+            ? previousDaily.alphaPoints
+            : 0,
+        nextThresholdDelta:
+          isSameDay && typeof previousDaily?.nextThresholdDelta === 'number'
+            ? previousDaily.nextThresholdDelta
+            : baseState.lastResult?.buyVolumeToNextPoint,
+        tradeCount:
+          isSameDay && typeof previousDaily?.tradeCount === 'number' ? previousDaily.tradeCount : 0,
+        firstBalance: currentBalanceValue,
+      } as const;
+
+      const nextLastResult = baseState.lastResult
+        ? {
+            ...baseState.lastResult,
+            firstBalanceToday: currentBalanceValue,
+          }
+        : baseState.lastResult;
+
+      const nextState: SchedulerState = {
+        ...baseState,
+        dailyBuyVolume: nextDaily,
+        lastResult: nextLastResult,
+      };
+
+      await chrome.storage.local.set({ [STORAGE_KEY]: nextState });
+      setState(nextState);
+    } catch (error) {
+      const messageText = error instanceof Error ? error.message : String(error);
+      // eslint-disable-next-line no-console
+      console.error('[dddd-alpah-extension] Failed to reset initial balance:', messageText);
+    } finally {
+      setResettingInitialBalance(false);
+    }
+  }, [activeTab.currentBalance, resettingInitialBalance]);
 
   // Sync local input values with state, but not during active editing
   useEffect(() => {
@@ -712,6 +986,19 @@ export function Popup(): React.ReactElement {
     todaysAlphaPoints = snapshot.alphaPointsToday;
   }
 
+  let successfulTradesToday: number | undefined;
+  if (
+    state?.dailyBuyVolume &&
+    state.dailyBuyVolume.date === todayKey &&
+    typeof state.dailyBuyVolume.tradeCount === 'number'
+  ) {
+    successfulTradesToday = state.dailyBuyVolume.tradeCount;
+  } else if (typeof snapshot?.successfulTradesToday === 'number') {
+    successfulTradesToday = snapshot.successfulTradesToday;
+  }
+
+  const successfulTradeLimitReached = (successfulTradesToday ?? 0) >= MAX_SUCCESSFUL_TRADES;
+
   function calculateTotalCost(): number | undefined {
     const firstBalance =
       state?.dailyBuyVolume?.date === todayKey
@@ -844,6 +1131,16 @@ export function Popup(): React.ReactElement {
             }
             style={{ marginBottom: 8 }}
           />
+
+          {orderHistoryError ? (
+            <Alert
+              type="error"
+              showIcon
+              message="订单历史请求失败"
+              description={orderHistoryError}
+              style={{ marginBottom: 8 }}
+            />
+          ) : null}
 
           <Card
             title={
@@ -1079,7 +1376,7 @@ export function Popup(): React.ReactElement {
             type="primary"
             icon={<PlayCircleOutlined />}
             loading={controlsBusy}
-            disabled={controlsBusy || isEnabled || !canOperate}
+            disabled={controlsBusy || isEnabled || !canOperate || successfulTradeLimitReached}
             onClick={() => void handleStart()}
             size="large"
           >
@@ -1118,6 +1415,10 @@ export function Popup(): React.ReactElement {
           <Alert message={'自动化运行中'} type={isRunning ? 'success' : 'info'} showIcon />
         )}
 
+        {successfulTradeLimitReached && (
+          <Alert message={SUCCESSFUL_TRADES_LIMIT_MESSAGE} type="warning" showIcon />
+        )}
+
         {typeof todaysAlphaPoints === 'number' &&
           Number.isFinite(todaysAlphaPoints) &&
           todaysAlphaPoints >= pointsTargetValue && (
@@ -1154,11 +1455,7 @@ export function Popup(): React.ReactElement {
             <Col span={12}>
               <Statistic
                 title="成功交易"
-                value={
-                  state?.dailyBuyVolume?.date === todayKey
-                    ? state.dailyBuyVolume.tradeCount?.toString()
-                    : snapshot.successfulTradesToday?.toString()
-                }
+                value={successfulTradesToday?.toString() ?? '—'}
                 valueStyle={{ fontSize: 20 }}
               />
             </Col>
@@ -1199,7 +1496,28 @@ export function Popup(): React.ReactElement {
             </Col>
             <Col span={12}>
               <Statistic
-                title="初始余额"
+                title={
+                  <Space size={6}>
+                    初始余额
+                    <Tooltip title="使用当前余额刷新初始余额">
+                      <span style={{ display: 'inline-flex' }}>
+                        <Button
+                          size="small"
+                          type="text"
+                          icon={<ReloadOutlined />}
+                          onClick={handleResetInitialBalance}
+                          disabled={
+                            resettingInitialBalance ||
+                            typeof activeTab.currentBalance !== 'number' ||
+                            !Number.isFinite(activeTab.currentBalance)
+                          }
+                          loading={resettingInitialBalance}
+                          aria-label="刷新初始余额"
+                        />
+                      </span>
+                    </Tooltip>
+                  </Space>
+                }
                 value={formatNumber(
                   state?.dailyBuyVolume?.date === todayKey
                     ? state.dailyBuyVolume.firstBalance

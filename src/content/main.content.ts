@@ -106,7 +106,8 @@ initializeAutomationStateWatcher();
 void sendInitialBalanceUpdate();
 
 async function sendInitialBalanceUpdate(): Promise<void> {
-  await delay(2_000);
+  // 延迟5秒,确保页面有足够时间加载余额
+  await delay(5_000);
 
   const tokenSymbol = extractTokenSymbol();
   const panel = getTradingFormPanel();

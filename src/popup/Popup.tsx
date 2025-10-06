@@ -1538,6 +1538,9 @@ export function Popup(): React.ReactElement {
                       });
                     }}
                     disabled={controlsBusy}
+                    controls={true}
+                    keyboard={true}
+                    stringMode={false}
                     style={{ width: '100%' }}
                   />
                 </div>
@@ -1558,6 +1561,9 @@ export function Popup(): React.ReactElement {
                       });
                     }}
                     disabled={controlsBusy}
+                    controls={true}
+                    keyboard={true}
+                    stringMode={false}
                     style={{ width: '100%' }}
                   />
                 </div>

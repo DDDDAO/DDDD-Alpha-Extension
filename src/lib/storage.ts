@@ -19,8 +19,13 @@ export interface TaskResultSnapshot {
   firstBalanceToday?: number;
 }
 
+export type PriceOffsetMode = 'bullish' | 'sideways' | 'custom';
+
 export interface SchedulerSettings {
   priceOffsetPercent: number;
+  priceOffsetMode: PriceOffsetMode;
+  buyPriceOffset: number;
+  sellPriceOffset: number;
   tokenAddress: string;
   pointsFactor: number;
   pointsTarget: number;
@@ -49,12 +54,15 @@ export interface SchedulerState {
 
 const DEFAULT_SETTINGS: SchedulerSettings = {
   priceOffsetPercent: DEFAULT_PRICE_OFFSET_PERCENT,
+  priceOffsetMode: 'sideways',
+  buyPriceOffset: 0.01,
+  sellPriceOffset: 0.01,
   tokenAddress: DEFAULT_AUTOMATION.tokenAddress,
   pointsFactor: DEFAULT_POINTS_FACTOR,
   pointsTarget: DEFAULT_POINTS_TARGET,
 };
 
-const MIN_PRICE_OFFSET_PERCENT = 0;
+const MIN_PRICE_OFFSET_PERCENT = -5;
 const MAX_PRICE_OFFSET_PERCENT = 5;
 const MIN_POINTS_FACTOR = 1;
 const MAX_POINTS_FACTOR = 1000;
@@ -82,6 +90,15 @@ export async function getSchedulerState(): Promise<SchedulerState> {
         priceOffsetPercent: normalizePriceOffsetPercent(
           storedSettings.priceOffsetPercent ?? DEFAULT_SETTINGS.priceOffsetPercent,
         ),
+        priceOffsetMode: normalizePriceOffsetMode(
+          storedSettings.priceOffsetMode ?? DEFAULT_SETTINGS.priceOffsetMode,
+        ),
+        buyPriceOffset: normalizePriceOffsetPercent(
+          storedSettings.buyPriceOffset ?? DEFAULT_SETTINGS.buyPriceOffset,
+        ),
+        sellPriceOffset: normalizePriceOffsetPercent(
+          storedSettings.sellPriceOffset ?? DEFAULT_SETTINGS.sellPriceOffset,
+        ),
         tokenAddress: normalizeTokenAddress(
           storedSettings.tokenAddress ?? DEFAULT_SETTINGS.tokenAddress,
         ),
@@ -103,6 +120,13 @@ export async function getSchedulerState(): Promise<SchedulerState> {
       });
     });
   });
+}
+
+function normalizePriceOffsetMode(value: unknown): PriceOffsetMode {
+  if (value === 'bullish' || value === 'sideways' || value === 'custom') {
+    return value;
+  }
+  return DEFAULT_SETTINGS.priceOffsetMode;
 }
 
 function normalizePriceOffsetPercent(value: unknown): number {

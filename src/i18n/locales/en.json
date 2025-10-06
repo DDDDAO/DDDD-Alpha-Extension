@@ -18,7 +18,9 @@
   "settings": {
     "title": "Settings",
     "priceOffset": "Price Offset (%)",
-    "priceOffsetTooltip": "The tool will automatically refresh the average price in real-time and place orders with this price offset setting. The default value is 0.01%, which means it will place buy orders at a price 0.01% higher than the average price and sell orders at a price 0.01% lower than the average price. Most tokens can be traded faster this way. If the price offset is set to 0, buy and sell orders will be placed at the average price simultaneously, with the smallest spread, but there is a risk of non-execution. It is recommended to place orders with a price offset of 0.01% or 0.005% when the price is stable.",
+    "priceOffsetTooltip": "The tool automatically refreshes the average price and places orders with the price offset setting. Positive values (+1%) add 1% to the base price, negative values (-1%) subtract 1% from the base price. Sideways mode (buy +0.01%, sell -0.01%) is suitable for stable prices; Bullish mode (buy +0.01%, sell +0.02%) is suitable for rising prices; Custom mode supports flexible configuration from -5% to +5%.",
+    "buyPriceOffset": "Buy Price Offset (%)",
+    "sellPriceOffset": "Sell Price Offset (%)",
     "pointsFactor": "Points Factor",
     "pointsFactorTooltip": "KOGE has a 1x points multiplier. If you are trading tokens with 2x or 4x points, please manually adjust this number to ensure the trading volume calculation below is correct.",
     "pointsTarget": "Points Target",

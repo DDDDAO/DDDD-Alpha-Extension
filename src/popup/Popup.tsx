@@ -17,6 +17,7 @@ import {
   Col,
   InputNumber,
   List,
+  Radio,
   Row,
   Space,
   Statistic,
@@ -39,7 +40,7 @@ import type {
 } from '../lib/messages.js';
 import { postRuntimeMessage } from '../lib/messages.js';
 import { buildOrderHistoryUrl, summarizeOrderHistoryData } from '../lib/orderHistory.js';
-import type { SchedulerState } from '../lib/storage';
+import type { PriceOffsetMode, SchedulerState } from '../lib/storage';
 import { LanguageSwitcher } from './LanguageSwitcher';
 
 const { Text, Link, Title } = Typography;
@@ -237,7 +238,9 @@ export function Popup(): React.ReactElement {
   });
   const [controlsBusy, setControlsBusy] = useState(false);
   const [resettingInitialBalance, setResettingInitialBalance] = useState(false);
-  const [localPriceOffset, setLocalPriceOffset] = useState('0.01');
+  const [priceOffsetMode, setPriceOffsetMode] = useState<PriceOffsetMode>('sideways');
+  const [buyPriceOffset, setBuyPriceOffset] = useState('0.01');
+  const [sellPriceOffset, setSellPriceOffset] = useState('-0.01');
   const [localPointsFactor, setLocalPointsFactor] = useState('1');
   const [localPointsTarget, setLocalPointsTarget] = useState('15');
   const [stableCoins, setStableCoins] = useState<StabilityItem[]>([]);
@@ -248,9 +251,10 @@ export function Popup(): React.ReactElement {
   const [orderHistoryError, setOrderHistoryError] = useState<string | null>(null);
   const [nowTick, setNowTick] = useState(Date.now());
 
-  const isEditingPriceOffset = useRef(false);
   const isEditingPointsFactor = useRef(false);
   const isEditingPointsTarget = useRef(false);
+  const isEditingBuyPriceOffset = useRef(false);
+  const isEditingSellPriceOffset = useRef(false);
   const orderHistoryRequestState = useRef<{
     tabId: number | null;
     status: 'idle' | 'pending' | 'success';
@@ -260,7 +264,6 @@ export function Popup(): React.ReactElement {
   });
   const hasRequestedAveragePrice = useRef(false);
 
-  const spreadId = useId();
   const pointsFactorId = useId();
   const pointsTargetId = useId();
 
@@ -551,6 +554,7 @@ export function Popup(): React.ReactElement {
     }
   }, [requestCurrentBalanceFromTab, requestTokenSymbolFromTab]);
 
+  // 首次获取平均价格
   useEffect(() => {
     if (hasRequestedAveragePrice.current) {
       return;
@@ -804,6 +808,9 @@ export function Popup(): React.ReactElement {
   const persistSchedulerSettings = useCallback(
     async (settingsPatch: {
       priceOffsetPercent?: number;
+      priceOffsetMode?: PriceOffsetMode;
+      buyPriceOffset?: number;
+      sellPriceOffset?: number;
       pointsFactor?: number;
       pointsTarget?: number;
     }): Promise<void> => {
@@ -829,6 +836,9 @@ export function Popup(): React.ReactElement {
         isEnabled: baseState.isEnabled ?? false,
         settings: baseState.settings ?? {
           priceOffsetPercent: DEFAULT_PRICE_OFFSET_PERCENT,
+          priceOffsetMode: 'sideways' as PriceOffsetMode,
+          buyPriceOffset: 0.01,
+          sellPriceOffset: 0.01,
           tokenAddress: BUILTIN_DEFAULT_TOKEN_ADDRESS,
           pointsFactor: DEFAULT_POINTS_FACTOR,
           pointsTarget: DEFAULT_POINTS_TARGET,
@@ -845,6 +855,9 @@ export function Popup(): React.ReactElement {
 
       const baseSettings = normalizedBaseState.settings ?? {
         priceOffsetPercent: DEFAULT_PRICE_OFFSET_PERCENT,
+        priceOffsetMode: 'sideways' as PriceOffsetMode,
+        buyPriceOffset: 0.01,
+        sellPriceOffset: 0.01,
         tokenAddress: BUILTIN_DEFAULT_TOKEN_ADDRESS,
         pointsFactor: DEFAULT_POINTS_FACTOR,
         pointsTarget: DEFAULT_POINTS_TARGET,
@@ -854,6 +867,9 @@ export function Popup(): React.ReactElement {
         ...normalizedBaseState,
         settings: {
           priceOffsetPercent: baseSettings.priceOffsetPercent,
+          priceOffsetMode: baseSettings.priceOffsetMode,
+          buyPriceOffset: baseSettings.buyPriceOffset,
+          sellPriceOffset: baseSettings.sellPriceOffset,
           tokenAddress: baseSettings.tokenAddress,
           pointsFactor: baseSettings.pointsFactor,
           pointsTarget: baseSettings.pointsTarget,
@@ -938,12 +954,20 @@ export function Popup(): React.ReactElement {
 
   // Sync local input values with state, but not during active editing
   useEffect(() => {
-    const offset = getPriceOffsetPercent(state);
+    const mode = state?.settings?.priceOffsetMode ?? 'sideways';
+    const buyOffset = state?.settings?.buyPriceOffset ?? 0.01;
+    const sellOffset = state?.settings?.sellPriceOffset ?? 0.01;
     const factor = getPointsFactor(state);
     const target = getPointsTarget(state);
 
-    if (!isEditingPriceOffset.current) {
-      setLocalPriceOffset(formatSpreadInputValue(offset));
+    setPriceOffsetMode(mode);
+
+    if (!isEditingBuyPriceOffset.current) {
+      setBuyPriceOffset(formatSpreadInputValue(buyOffset));
+    }
+
+    if (!isEditingSellPriceOffset.current) {
+      setSellPriceOffset(formatSpreadInputValue(sellOffset));
     }
 
     if (isPointsFactorLocked && sanitizedPointsFactorLockValue !== null) {
@@ -1014,24 +1038,6 @@ export function Popup(): React.ReactElement {
 
   async function handleStop(): Promise<void> {
     await handleControlMessage('CONTROL_STOP');
-  }
-
-  async function handlePriceOffsetChange(value: string): Promise<void> {
-    isEditingPriceOffset.current = false;
-    const rawValue = Number.parseFloat(value);
-    if (Number.isNaN(rawValue)) {
-      return;
-    }
-
-    const sanitizedValue = clampPriceOffsetPercent(rawValue);
-    setLocalPriceOffset(formatSpreadInputValue(sanitizedValue));
-
-    const currentValue = getPriceOffsetPercent(state);
-    if (!spreadValuesDiffer(currentValue, sanitizedValue)) {
-      return;
-    }
-
-    await persistSchedulerSettings({ priceOffsetPercent: sanitizedValue });
   }
 
   async function handlePointsFactorChange(value: string): Promise<void> {
@@ -1407,6 +1413,37 @@ export function Popup(): React.ReactElement {
                   {t('token.multiplier')}
                 </Text>
               )}
+              {snapshot?.averagePrice && (
+                <div
+                  style={{
+                    marginTop: 8,
+                    padding: '8px 12px',
+                    background: '#f0f5ff',
+                    borderRadius: 4,
+                    border: '1px solid #adc6ff',
+                  }}
+                >
+                  <Space direction="vertical" size={2} style={{ width: '100%' }}>
+                    <Space size={6} align="center">
+                      <DollarOutlined style={{ color: '#1890ff', fontSize: 14 }} />
+                      <Text type="secondary" style={{ fontSize: 11 }}>
+                        {t('stats.averagePrice')}
+                      </Text>
+                    </Space>
+                    <Text strong style={{ fontSize: 16, color: '#1890ff' }}>
+                      {formatNumber(snapshot.averagePrice, {
+                        minimumFractionDigits: 4,
+                        maximumFractionDigits: 8,
+                      })}
+                    </Text>
+                    {snapshot.timestamp && (
+                      <Text type="secondary" style={{ fontSize: 10 }}>
+                        {new Date(snapshot.timestamp).toLocaleTimeString(i18n.language)}
+                      </Text>
+                    )}
+                  </Space>
+                </div>
+              )}
             </Space>
           </Card>
         </Space>
@@ -1415,28 +1452,130 @@ export function Popup(): React.ReactElement {
       <Card title={t('settings.title')} size="small" style={{ marginBottom: 16 }}>
         <Space direction="vertical" size="middle" style={{ width: '100%' }}>
           <div>
-            <Space size={6}>
+            <Space size={6} style={{ marginBottom: 8 }}>
               <Text type="secondary">{t('settings.priceOffset')}</Text>
               <Tooltip title={t('settings.priceOffsetTooltip')}>
                 <InfoCircleOutlined style={{ color: '#1677ff' }} />
               </Tooltip>
             </Space>
-            <InputNumber
-              id={spreadId}
-              min={0}
-              max={5}
-              step={0.001}
-              placeholder="0.01"
-              value={Number.parseFloat(localPriceOffset)}
-              onChange={(value) => {
-                isEditingPriceOffset.current = true;
-                setLocalPriceOffset(String(value ?? 0.01));
+            <Radio.Group
+              value={priceOffsetMode}
+              onChange={(e) => {
+                const mode = e.target.value as PriceOffsetMode;
+                setPriceOffsetMode(mode);
+                let buyOffset = 0.01;
+                let sellOffset = -0.01;
+                if (mode === 'sideways') {
+                  buyOffset = 0.01;
+                  sellOffset = -0.01;
+                } else if (mode === 'bullish') {
+                  buyOffset = 0.01;
+                  sellOffset = 0.02;
+                }
+                setBuyPriceOffset(String(buyOffset));
+                setSellPriceOffset(String(sellOffset));
+                void persistSchedulerSettings({
+                  priceOffsetMode: mode,
+                  buyPriceOffset: buyOffset,
+                  sellPriceOffset: sellOffset,
+                });
               }}
-              onBlur={(e) => void handlePriceOffsetChange(e.target.value)}
               disabled={controlsBusy}
-              title="调整限价订单与 VWAP 的偏离距离"
-              style={{ width: '100%' }}
-            />
+              style={{ width: '100%', marginBottom: 12 }}
+            >
+              <Space direction="vertical" size="small" style={{ width: '100%' }}>
+                <Radio value="bullish">
+                  <Space size={6}>
+                    <span>上涨模式</span>
+                    <Text type="secondary" style={{ fontSize: 11 }}>
+                      (买入: +0.01%, 卖出: +0.02%)
+                    </Text>
+                  </Space>
+                </Radio>
+                <Radio value="sideways">
+                  <Space size={6}>
+                    <span>横盘模式</span>
+                    <Text type="secondary" style={{ fontSize: 11 }}>
+                      (买入: +0.01%, 卖出: -0.01%)
+                    </Text>
+                  </Space>
+                </Radio>
+                <Radio value="custom">自定义</Radio>
+              </Space>
+            </Radio.Group>
+
+            {priceOffsetMode === 'custom' && (
+              <Space direction="vertical" size="small" style={{ width: '100%' }}>
+                <div>
+                  <Text type="secondary" style={{ fontSize: 12 }}>
+                    {t('settings.buyPriceOffset')}
+                  </Text>
+                  <InputNumber
+                    min={-5}
+                    max={5}
+                    step={0.001}
+                    placeholder="0.01"
+                    value={Number.parseFloat(buyPriceOffset)}
+                    onFocus={() => {
+                      isEditingBuyPriceOffset.current = true;
+                    }}
+                    onChange={(value) => {
+                      if (value != null) {
+                        setBuyPriceOffset(String(value));
+                      }
+                    }}
+                    onBlur={() => {
+                      isEditingBuyPriceOffset.current = false;
+                      const parsed = Number.parseFloat(buyPriceOffset);
+                      const finalValue = Number.isFinite(parsed) && parsed !== 0 ? parsed : 0.01;
+                      setBuyPriceOffset(String(finalValue));
+                      void persistSchedulerSettings({
+                        buyPriceOffset: finalValue,
+                      });
+                    }}
+                    disabled={controlsBusy}
+                    controls={true}
+                    keyboard={true}
+                    stringMode={false}
+                    style={{ width: '100%' }}
+                  />
+                </div>
+                <div>
+                  <Text type="secondary" style={{ fontSize: 12 }}>
+                    {t('settings.sellPriceOffset')}
+                  </Text>
+                  <InputNumber
+                    min={-5}
+                    max={5}
+                    step={0.001}
+                    placeholder="-0.01"
+                    value={Number.parseFloat(sellPriceOffset)}
+                    onFocus={() => {
+                      isEditingSellPriceOffset.current = true;
+                    }}
+                    onChange={(value) => {
+                      if (value != null) {
+                        setSellPriceOffset(String(value));
+                      }
+                    }}
+                    onBlur={() => {
+                      isEditingSellPriceOffset.current = false;
+                      const parsed = Number.parseFloat(sellPriceOffset);
+                      const finalValue = Number.isFinite(parsed) && parsed !== 0 ? parsed : -0.01;
+                      setSellPriceOffset(String(finalValue));
+                      void persistSchedulerSettings({
+                        sellPriceOffset: finalValue,
+                      });
+                    }}
+                    disabled={controlsBusy}
+                    controls={true}
+                    keyboard={true}
+                    stringMode={false}
+                    style={{ width: '100%' }}
+                  />
+                </div>
+              </Space>
+            )}
           </div>
 
           <div>
@@ -2052,12 +2191,6 @@ function getTokenAddress(state: SchedulerState | null): string {
   return candidate ?? BUILTIN_DEFAULT_TOKEN_ADDRESS;
 }
 
-function getPriceOffsetPercent(state: SchedulerState | null): number {
-  const raw = state?.settings?.priceOffsetPercent;
-  const numeric = typeof raw === 'number' ? raw : Number(raw);
-  return Number.isFinite(numeric) ? clampPriceOffsetPercent(numeric) : DEFAULT_PRICE_OFFSET_PERCENT;
-}
-
 function getPointsFactor(state: SchedulerState | null): number {
   const raw = state?.settings?.pointsFactor;
   const numeric = typeof raw === 'number' ? raw : Number(raw);
@@ -2068,14 +2201,6 @@ function getPointsTarget(state: SchedulerState | null): number {
   const raw = state?.settings?.pointsTarget;
   const numeric = typeof raw === 'number' ? raw : Number(raw);
   return Number.isFinite(numeric) ? clampPointsTarget(numeric) : DEFAULT_POINTS_TARGET;
-}
-
-function clampPriceOffsetPercent(value: number): number {
-  if (!Number.isFinite(value)) {
-    return DEFAULT_PRICE_OFFSET_PERCENT;
-  }
-  const clamped = Math.min(Math.max(value, 0), 5);
-  return Number(clamped.toFixed(6));
 }
 
 function clampPointsFactor(value: number): number {
@@ -2101,13 +2226,6 @@ function formatSpreadInputValue(value: number): string {
   const fixed = value.toFixed(3);
   const trimmed = fixed.replace(/\.0+$/u, '').replace(/0+$/u, '').replace(/\.$/u, '');
   return trimmed.length > 0 ? trimmed : '0';
-}
-
-function spreadValuesDiffer(a: number, b: number): boolean {
-  if (!Number.isFinite(a) || !Number.isFinite(b)) {
-    return true;
-  }
-  return Math.abs(a - b) > 1e-6;
 }
 
 function pointsFactorValuesDiffer(a: number, b: number): boolean {

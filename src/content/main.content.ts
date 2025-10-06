@@ -24,7 +24,7 @@ const LIMIT_STATE_POLL_INTERVAL_MS = 100;
 const MIN_AUTOMATION_DELAY_MS = 5_000;
 const MAX_AUTOMATION_DELAY_MS = 10_000;
 
-const MIN_PRICE_OFFSET_PERCENT = 0;
+const MIN_PRICE_OFFSET_PERCENT = -5;
 const MAX_PRICE_OFFSET_PERCENT = 5;
 
 function getCookieValue(name: string): string | null {
@@ -275,6 +275,8 @@ let runtimeUnavailable = false;
 let automationEnabled = false;
 let automationStateWatcherInitialized = false;
 let priceOffsetPercent = DEFAULT_PRICE_OFFSET_PERCENT;
+let buyPriceOffset = DEFAULT_PRICE_OFFSET_PERCENT;
+let sellPriceOffset = DEFAULT_PRICE_OFFSET_PERCENT;
 let pointsFactor = DEFAULT_POINTS_FACTOR;
 let pointsTarget = DEFAULT_POINTS_TARGET;
 let nextEvaluationTimeoutId: number | undefined;
@@ -648,6 +650,8 @@ async function executePrimaryTask(
       orderResult = await ensureLimitOrderPlaced({
         price: averagePrice,
         priceOffsetPercent,
+        buyPriceOffset,
+        sellPriceOffset,
       });
       // eslint-disable-next-line no-console
       console.log('[dddd-alpah-extension] Order result:', orderResult.status, orderResult.reason);
@@ -874,6 +878,8 @@ interface OrderPlacementResult {
 async function ensureLimitOrderPlaced(params: {
   price: number;
   priceOffsetPercent: number;
+  buyPriceOffset: number;
+  sellPriceOffset: number;
 }): Promise<OrderPlacementResult> {
   // eslint-disable-next-line no-console
   console.log('[dddd-alpah-extension] ensureLimitOrderPlaced started');
@@ -936,6 +942,8 @@ async function ensureLimitOrderPlaced(params: {
   const buyVolume = await configureLimitOrder({
     price: params.price,
     priceOffsetPercent: params.priceOffsetPercent,
+    buyPriceOffset: params.buyPriceOffset,
+    sellPriceOffset: params.sellPriceOffset,
     availableUsdt,
     orderPanel,
   });
@@ -1128,6 +1136,8 @@ function initializeAutomationStateWatcher(): void {
 function applyAutomationState(value: unknown): void {
   let nextEnabled = false;
   let nextPriceOffset = DEFAULT_PRICE_OFFSET_PERCENT;
+  let nextBuyPriceOffset = DEFAULT_PRICE_OFFSET_PERCENT;
+  let nextSellPriceOffset = DEFAULT_PRICE_OFFSET_PERCENT;
   let nextPointsFactor = DEFAULT_POINTS_FACTOR;
   let nextPointsTarget = DEFAULT_POINTS_TARGET;
 
@@ -1138,6 +1148,13 @@ function applyAutomationState(value: unknown): void {
     if (record.settings && typeof record.settings === 'object') {
       const candidate = (record.settings as { priceOffsetPercent?: unknown }).priceOffsetPercent;
       nextPriceOffset = extractPriceOffsetPercent(candidate);
+
+      const buyOffsetCandidate = (record.settings as { buyPriceOffset?: unknown }).buyPriceOffset;
+      nextBuyPriceOffset = extractPriceOffsetPercent(buyOffsetCandidate);
+
+      const sellOffsetCandidate = (record.settings as { sellPriceOffset?: unknown })
+        .sellPriceOffset;
+      nextSellPriceOffset = extractPriceOffsetPercent(sellOffsetCandidate);
 
       const factorCandidate = (record.settings as { pointsFactor?: unknown }).pointsFactor;
       nextPointsFactor = extractPointsFactor(factorCandidate);
@@ -1150,6 +1167,8 @@ function applyAutomationState(value: unknown): void {
   const stateChanged =
     automationEnabled !== nextEnabled ||
     priceOffsetPercent !== nextPriceOffset ||
+    buyPriceOffset !== nextBuyPriceOffset ||
+    sellPriceOffset !== nextSellPriceOffset ||
     pointsFactor !== nextPointsFactor ||
     pointsTarget !== nextPointsTarget;
 
@@ -1158,6 +1177,8 @@ function applyAutomationState(value: unknown): void {
     console.log('[dddd-alpah-extension] Automation state updated:', {
       enabled: nextEnabled,
       priceOffsetPercent: nextPriceOffset,
+      buyPriceOffset: nextBuyPriceOffset,
+      sellPriceOffset: nextSellPriceOffset,
       pointsFactor: nextPointsFactor,
       pointsTarget: nextPointsTarget,
     });
@@ -1165,6 +1186,8 @@ function applyAutomationState(value: unknown): void {
 
   automationEnabled = nextEnabled;
   priceOffsetPercent = nextPriceOffset;
+  buyPriceOffset = nextBuyPriceOffset;
+  sellPriceOffset = nextSellPriceOffset;
   pointsFactor = nextPointsFactor;
   pointsTarget = nextPointsTarget;
 
@@ -1298,45 +1321,34 @@ async function refreshAutomationState(): Promise<void> {
 async function configureLimitOrder(params: {
   price: number;
   priceOffsetPercent: number;
+  buyPriceOffset: number;
+  sellPriceOffset: number;
   availableUsdt: number;
   orderPanel: HTMLElement;
 }): Promise<number> {
-  const { price, priceOffsetPercent, availableUsdt, orderPanel } = params;
+  const { price, buyPriceOffset, sellPriceOffset, availableUsdt, orderPanel } = params;
 
-  const clampedOffsetPercent = clampPriceOffsetPercent(priceOffsetPercent);
-  const offsetFactor = clampedOffsetPercent / 100;
-  const buyPrice = price * (1 + offsetFactor);
-  const reversePriceBase = price * (1 - offsetFactor);
-  const reversePrice = reversePriceBase > 0 ? reversePriceBase : 0;
+  const clampedBuyOffset = clampPriceOffsetPercent(buyPriceOffset);
+  const clampedSellOffset = clampPriceOffsetPercent(sellPriceOffset);
+
+  const buyPrice = price * (1 + clampedBuyOffset / 100);
+  const sellPrice = price * (1 + clampedSellOffset / 100);
+  const safeSellPrice = sellPrice > 0 ? sellPrice : 0;
+
   const buyPriceValue = formatNumberFixedDecimals(buyPrice, 8);
-  const reversePriceValue = formatNumberFixedDecimals(reversePrice, 8);
-
-  // eslint-disable-next-line no-console
-  console.log('[dddd-alpah-extension] Configuring order:', {
-    basePrice: price,
-    offsetPercent: clampedOffsetPercent,
-    buyPrice: buyPriceValue,
-    reversePrice: reversePriceValue,
-    availableUsdt,
-  });
+  const sellPriceValue = formatNumberFixedDecimals(safeSellPrice, 8);
 
   await ensureLimitOrderMode(orderPanel);
 
   const priceInput = orderPanel.querySelector<HTMLInputElement>('#limitPrice');
   if (!priceInput) {
-    // eslint-disable-next-line no-console
-    console.error('[dddd-alpah-extension] Limit price input not found');
     throw new Error('Limit price input not found.');
   }
-  // eslint-disable-next-line no-console
-  console.log('[dddd-alpah-extension] Setting buy price:', buyPriceValue);
   await waitRandomDelay();
   setReactInputValue(priceInput, buyPriceValue);
   await waitForAnimationFrame();
 
   const toggleChanged = ensureReverseOrderToggle(orderPanel);
-  // eslint-disable-next-line no-console
-  console.log('[dddd-alpah-extension] Reverse order toggle changed:', toggleChanged);
   if (toggleChanged) {
     await waitForAnimationFrame();
   }
@@ -1344,8 +1356,6 @@ async function configureLimitOrder(params: {
 
   const slider = orderPanel.querySelector<HTMLInputElement>('input.bn-slider');
   if (!slider) {
-    // eslint-disable-next-line no-console
-    console.error('[dddd-alpah-extension] Order amount slider not found');
     throw new Error('Order amount slider not found.');
   }
   // eslint-disable-next-line no-console
@@ -1368,8 +1378,8 @@ async function configureLimitOrder(params: {
     throw new Error('Reverse order price input not found.');
   }
   // eslint-disable-next-line no-console
-  console.log('[dddd-alpah-extension] Setting reverse price:', reversePriceValue);
-  setReactInputValue(reversePriceInput, reversePriceValue);
+  console.log('[dddd-alpah-extension] 设置卖出价格:', sellPriceValue);
+  setReactInputValue(reversePriceInput, sellPriceValue);
   await waitForAnimationFrame();
   await waitRandomDelay();
 

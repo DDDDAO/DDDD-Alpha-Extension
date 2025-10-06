@@ -1330,41 +1330,25 @@ async function configureLimitOrder(params: {
 
   const clampedBuyOffset = clampPriceOffsetPercent(buyPriceOffset);
   const clampedSellOffset = clampPriceOffsetPercent(sellPriceOffset);
-  const buyOffsetFactor = clampedBuyOffset / 100;
-  const sellOffsetFactor = clampedSellOffset / 100;
-  const buyPrice = price * (1 + buyOffsetFactor);
-  const reversePriceBase = price * (1 + sellOffsetFactor);
-  const reversePrice = reversePriceBase > 0 ? reversePriceBase : 0;
-  const buyPriceValue = formatNumberFixedDecimals(buyPrice, 8);
-  const reversePriceValue = formatNumberFixedDecimals(reversePrice, 8);
 
-  // eslint-disable-next-line no-console
-  console.log('[dddd-alpah-extension] Configuring order:', {
-    basePrice: price,
-    buyOffsetPercent: clampedBuyOffset,
-    sellOffsetPercent: clampedSellOffset,
-    buyPrice: buyPriceValue,
-    reversePrice: reversePriceValue,
-    availableUsdt,
-  });
+  const buyPrice = price * (1 + clampedBuyOffset / 100);
+  const sellPrice = price * (1 + clampedSellOffset / 100);
+  const safeSellPrice = sellPrice > 0 ? sellPrice : 0;
+
+  const buyPriceValue = formatNumberFixedDecimals(buyPrice, 8);
+  const sellPriceValue = formatNumberFixedDecimals(safeSellPrice, 8);
 
   await ensureLimitOrderMode(orderPanel);
 
   const priceInput = orderPanel.querySelector<HTMLInputElement>('#limitPrice');
   if (!priceInput) {
-    // eslint-disable-next-line no-console
-    console.error('[dddd-alpah-extension] Limit price input not found');
     throw new Error('Limit price input not found.');
   }
-  // eslint-disable-next-line no-console
-  console.log('[dddd-alpah-extension] Setting buy price:', buyPriceValue);
   await waitRandomDelay();
   setReactInputValue(priceInput, buyPriceValue);
   await waitForAnimationFrame();
 
   const toggleChanged = ensureReverseOrderToggle(orderPanel);
-  // eslint-disable-next-line no-console
-  console.log('[dddd-alpah-extension] Reverse order toggle changed:', toggleChanged);
   if (toggleChanged) {
     await waitForAnimationFrame();
   }
@@ -1372,8 +1356,6 @@ async function configureLimitOrder(params: {
 
   const slider = orderPanel.querySelector<HTMLInputElement>('input.bn-slider');
   if (!slider) {
-    // eslint-disable-next-line no-console
-    console.error('[dddd-alpah-extension] Order amount slider not found');
     throw new Error('Order amount slider not found.');
   }
   // eslint-disable-next-line no-console
@@ -1396,8 +1378,8 @@ async function configureLimitOrder(params: {
     throw new Error('Reverse order price input not found.');
   }
   // eslint-disable-next-line no-console
-  console.log('[dddd-alpah-extension] Setting reverse price:', reversePriceValue);
-  setReactInputValue(reversePriceInput, reversePriceValue);
+  console.log('[dddd-alpah-extension] 设置卖出价格:', sellPriceValue);
+  setReactInputValue(reversePriceInput, sellPriceValue);
   await waitForAnimationFrame();
   await waitRandomDelay();
 

@@ -44,14 +44,22 @@ npm run build
 
 #### 第二步：配置参数
 
-**价格偏移百分比**
-- **工作原理**：
-  - 买单 = VWAP + 偏移
-  - 卖单 = VWAP - 偏移
-- **推荐值**：
-  - 平衡模式：0.01%（万1）或 0.005%（万0.5）
-  - 极低磨损：0.001%（万0.1）- K线稳定时
-  - 快速成交：0.02%（万2）及以上
+**价格偏移模式**
+工具会自动实时刷新订单簿平均价格，并以价格偏移设置进行下单。
+
+- **计算规则**：
+  - 正值（+1%）= 基准价 × 1.01
+  - 负值（-1%）= 基准价 × 0.99
+
+- **预设模式**：
+  - **横盘模式**（推荐）：买入 +0.01%，卖出 -0.01%
+    - 适用于价格稳定时使用
+    - 价差小，磨损低
+  - **上涨模式**：买入 +0.01%，卖出 +0.02%
+    - 适用于价格上涨趋势
+    - 更快成交卖单
+  - **自定义模式**：支持 -5% 到 +5% 灵活配置
+    - 可根据市场情况自由调整
 
 **积分系数**
 - 4倍Alpha代币设为 4
@@ -62,12 +70,14 @@ npm run build
 
 #### 第三步：启动自动化
 1. 点击**启动**按钮
+2. 扩展每隔约 30 秒自动交易一次
 3. 达到目标或点击**停止**结束
 
 #### 第四步：查看数据
 - 实时查看磨损和交易量
 - 监控积分增长
 - 检查成本比率
+- 查看实时平均价格
 
 ## 核心功能
 
@@ -80,10 +90,15 @@ npm run build
 
 ### 自动 VWAP 交易
 
-- **智能价格计算**：自动计算成交量加权平均价格（VWAP）
+- **智能价格计算**：自动计算订单簿加权平均价格（VWAP）
+- **实时价格显示**：在代币卡片中显示当前平均价格和更新时间
+- **灵活价格偏移**：
+  - 支持正负百分比偏移（-5% 到 +5%）
+  - 三种预设模式：横盘、上涨、自定义
+  - 买入价和卖出价独立设置
 - **双向挂单策略**：
-  - 买单：VWAP + 偏移价格（默认万1）
-  - 卖单：VWAP - 偏移价格（默认万1）
+  - 买单价格 = 平均价 × (1 + 买入偏移%)
+  - 卖单价格 = 平均价 × (1 + 卖出偏移%)
 - **全仓交易**：每次使用全部可用 USDT 进行交易
 
 ### 实时数据面板
@@ -92,16 +107,23 @@ npm run build
 - **Alpha 积分**：自动计算 `floor(log2(交易量))`
 - **成功交易次数**：统计成交订单数量
 - **余额跟踪**：
-  - 初始余额：今日首次余额
+  - 初始余额：今日首次余额（支持手动刷新）
   - 当前余额：实时更新
   - 总成本：初始余额 - 当前余额
   - 成本比率：磨损百分比
 
 ### 空投信息
 
-- **今日空投**：展示当日即可参与的空投项目，含代币、数量、估算价值、阶段、类型等关键信息。
-- **空投预告**：列出未来即将开启的空投，标注预计日期、时间和奖励规模，方便提前准备。
-- **价格参考**：同步展示相关代币的最新价格，快速评估潜在收益。
+- **今日空投**：展示当日即可参与的空投项目，含代币、数量、估算价值、阶段、类型等关键信息
+- **空投预告**：列出未来即将开启的空投，标注预计日期、时间和奖励规模，方便提前准备
+- **价格参考**：同步展示相关代币的最新价格，快速评估潜在收益
+- **自动更新**：每 30 分钟自动刷新空投信息
+
+### 国际化支持
+
+- **多语言界面**：支持中文简体和英文
+- **一键切换**：界面右上角快速切换语言
+- **完整翻译**：所有功能和提示均支持双语
 
 ### 智能停止机制
 
@@ -122,11 +144,17 @@ npm run build
 
 ### 参数优化指南
 
-| 场景 | 价格偏移 | 预估磨损 | 适用情况 |
-|------|---------|---------|---------|
-| 极致低成本 | 0.001% (万0.1) | 15分≈1.6U, 16分≈3.2U | K线极稳 |
-| 平衡模式 | 0.01% (万1) | 15分≈5-8U | 大多数情况 |
-| 快速成交 | 0.02% (万2) | 15分≈10-15U | 急需刷分 |
+| 场景 | 推荐模式 | 买入偏移 | 卖出偏移 | 预估磨损 | 适用情况 |
+|------|---------|---------|---------|---------|---------|
+| 价格稳定 | 横盘模式 | +0.01% | -0.01% | 15分≈5-8U | 大多数情况 |
+| 价格上涨 | 上涨模式 | +0.01% | +0.02% | 15分≈8-12U | 趋势向上 |
+| 极致低成本 | 自定义 | +0.001% | -0.001% | 15分≈1.6U | K线极稳 |
+| 快速成交 | 自定义 | +0.02% | +0.02% | 15分≈10-15U | 急需刷分 |
+
+**负价差说明**：
+- 卖出偏移为负值（如 -0.01%）表示以低于平均价的价格挂卖单
+- 可以加快卖单成交速度，但会增加磨损
+- 适合价格稳定、需要快速完成交易的场景
 
 ### 多账号管理
 **使用 Chrome Profile 功能**
@@ -139,6 +167,7 @@ npm run build
 - 预留 10-20% 余额缓冲
 - 突然插针时手动卖出
 - 密切关注稳定性状态变化
+- 定期检查实时平均价格
 
 ## 重要提示
 
@@ -152,6 +181,7 @@ npm run build
 - 不存储任何密码或私钥
 - 仅通过浏览器 UI 操作
 - 需手动登录认证
+- 完全开源，代码透明
 
 ### 许可证
 MIT 许可证 - 可自由修改和分发
@@ -159,9 +189,9 @@ MIT 许可证 - 可自由修改和分发
 
 ---
 
-# DDDD Alpha Extension
+# DDDD Alpha Extension (English)
 
-An intelligent Binance Alpha points farming assistant with integrated stability dashboard, automated VWAP trading, and multi-account management.
+An intelligent Binance Alpha points farming assistant with integrated stability dashboard, automated VWAP trading, and multi-account management. Developed by DDDDAO Quant Community.
 
 ## Core Features
 
@@ -172,10 +202,15 @@ An intelligent Binance Alpha points farming assistant with integrated stability 
 - **One-click Jump**: Click token name to navigate to Alpha trading page
 
 ### Automated VWAP Trading
-- **Smart Pricing**: Auto-calculate Volume-Weighted Average Price
+- **Smart Pricing**: Auto-calculate Volume-Weighted Average Price from order book
+- **Real-time Price Display**: Show current average price and update time in token card
+- **Flexible Price Offset**:
+  - Support positive/negative percentage offset (-5% to +5%)
+  - Three preset modes: Sideways, Bullish, Custom
+  - Independent buy and sell price settings
 - **Dual Order Strategy**:
-  - Buy: VWAP + Offset (default 0.01%)
-  - Sell: VWAP - Offset (default 0.01%)
+  - Buy price = Average price × (1 + Buy offset %)
+  - Sell price = Average price × (1 + Sell offset %)
 - **Full Position**: Use all available USDT for each trade
 
 ### Real-time Data Panel
@@ -183,20 +218,25 @@ An intelligent Binance Alpha points farming assistant with integrated stability 
 - **Alpha Points**: Auto-calculate `floor(log2(volume))`
 - **Successful Trades**: Count of executed orders
 - **Balance Tracking**:
-  - Initial Balance: First balance of the day
+  - Initial Balance: First balance of the day (manual refresh supported)
   - Current Balance: Real-time updates
   - Total Cost: Initial - Current
   - Cost Ratio: Slippage percentage
 
 ### Airdrop Insights
-- **Today’s Airdrops**: Highlights opportunities available right now with token, allocation, estimated value, stage, and type.
-- **Upcoming Airdrops**: Lists scheduled drops with expected date, time, and reward size so you can plan ahead.
-- **Price Snapshot**: Shows the latest token prices to help you gauge potential returns quickly.
+- **Today's Airdrops**: Highlights opportunities available right now with token, allocation, estimated value, stage, and type
+- **Upcoming Airdrops**: Lists scheduled drops with expected date, time, and reward size for planning ahead
+- **Price Snapshot**: Shows latest token prices to help gauge potential returns quickly
+- **Auto-update**: Refresh airdrop information every 30 minutes
 
-###  Smart Stop Mechanism
+### Internationalization Support
+- **Multi-language Interface**: Support Chinese and English
+- **Quick Switch**: Toggle language from top-right corner
+- **Full Translation**: All features and tooltips support both languages
+
+### Smart Stop Mechanism
 - **Points Target**: Auto-stop at goal (default 15 pts ≈ 32,768 USDT)
 - **Manual Stop**: Pause anytime
-- **Error Protection**: Auto-pause on login failures
 
 ## Installation & Usage
 
@@ -230,14 +270,22 @@ npm run build
 
 #### Step 2: Configure Parameters
 
-**Price Offset Percent**
-- **How it works**:
-  - Buy = VWAP + Offset
-  - Sell = VWAP - Offset
-- **Recommended**:
-  - Balanced: 0.01% (0.1 bps) or 0.005% (0.05 bps)
-  - Ultra-low Cost: 0.001% (0.01 bps) - when chart is stable
-  - Fast Execution: 0.02% (0.2 bps) or higher
+**Price Offset Modes**
+The tool automatically refreshes order book average price in real-time and places orders with price offset settings.
+
+- **Calculation Rules**:
+  - Positive (+1%) = Base price × 1.01
+  - Negative (-1%) = Base price × 0.99
+
+- **Preset Modes**:
+  - **Sideways Mode** (Recommended): Buy +0.01%, Sell -0.01%
+    - Suitable for stable prices
+    - Small spread, low cost
+  - **Bullish Mode**: Buy +0.01%, Sell +0.02%
+    - Suitable for uptrend
+    - Faster sell execution
+  - **Custom Mode**: Flexible configuration from -5% to +5%
+    - Adjust freely based on market conditions
 
 **Points Factor**
 - 4x tokens = 4
@@ -248,13 +296,14 @@ npm run build
 
 #### Step 3: Start Automation
 1. Click **Start** button
-2. Extension trades every 30 seconds
+2. Extension trades automatically every ~30 seconds
 3. Reaches target or click **Stop** to end
 
 #### Step 4: View Data
 - View real-time cost and volume
 - Monitor points growth
 - Check cost ratio
+- Watch real-time average price
 
 ## Trading Tips
 
@@ -270,11 +319,17 @@ npm run build
 
 ### Parameter Optimization Guide
 
-| Scenario | Offset | Est. Cost | Use Case |
-|----------|--------|-----------|----------|
-| Ultra-low | 0.001% (0.01 bps) | 15pts≈1.6U, 16pts≈3.2U | Very stable chart |
-| Balanced | 0.01% (0.1 bps) | 15pts≈5-8U | Most cases |
-| Fast | 0.02% (0.2 bps) | 15pts≈10-15U | Urgent farming |
+| Scenario | Mode | Buy Offset | Sell Offset | Est. Cost | Use Case |
+|----------|------|-----------|-------------|-----------|----------|
+| Stable Price | Sideways | +0.01% | -0.01% | 15pts≈5-8U | Most cases |
+| Uptrend | Bullish | +0.01% | +0.02% | 15pts≈8-12U | Rising trend |
+| Ultra-low Cost | Custom | +0.001% | -0.001% | 15pts≈1.6U | Very stable |
+| Fast Execution | Custom | +0.02% | +0.02% | 15pts≈10-15U | Urgent farming |
+
+**Negative Offset Explanation**:
+- Negative sell offset (e.g., -0.01%) means placing sell orders below average price
+- Speeds up sell order execution but increases slippage
+- Suitable for stable prices when quick completion is needed
 
 ### Multi-Account Management
 **Use Chrome Profile**
@@ -287,6 +342,7 @@ npm run build
 - Reserve 10-20% balance buffer
 - Manual sell on sudden spikes
 - Monitor stability status changes
+- Check real-time average price regularly
 
 ## Important Notes
 
@@ -296,10 +352,11 @@ npm run build
 - Full position for each trade
 - Trading involves risk, invest cautiously
 
-###  Security Notes
+### Security Notes
 - No passwords or keys stored
 - Browser UI operations only
 - Manual authentication required
+- Fully open source, transparent code
 
 ### License
 MIT License - free to modify and distribute

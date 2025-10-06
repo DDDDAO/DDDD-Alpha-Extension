@@ -240,7 +240,7 @@ export function Popup(): React.ReactElement {
   const [resettingInitialBalance, setResettingInitialBalance] = useState(false);
   const [priceOffsetMode, setPriceOffsetMode] = useState<PriceOffsetMode>('sideways');
   const [buyPriceOffset, setBuyPriceOffset] = useState('0.01');
-  const [sellPriceOffset, setSellPriceOffset] = useState('0.01');
+  const [sellPriceOffset, setSellPriceOffset] = useState('-0.01');
   const [localPointsFactor, setLocalPointsFactor] = useState('1');
   const [localPointsTarget, setLocalPointsTarget] = useState('15');
   const [stableCoins, setStableCoins] = useState<StabilityItem[]>([]);
@@ -253,6 +253,8 @@ export function Popup(): React.ReactElement {
 
   const isEditingPointsFactor = useRef(false);
   const isEditingPointsTarget = useRef(false);
+  const isEditingBuyPriceOffset = useRef(false);
+  const isEditingSellPriceOffset = useRef(false);
   const orderHistoryRequestState = useRef<{
     tabId: number | null;
     status: 'idle' | 'pending' | 'success';
@@ -570,29 +572,6 @@ export function Popup(): React.ReactElement {
         hasRequestedAveragePrice.current = false;
       }
     });
-  }, [activeTab.isSupported, activeTab.tabId]);
-
-  // 定时刷新平均价格（每10秒）
-  useEffect(() => {
-    if (!activeTab.isSupported || typeof activeTab.tabId !== 'number') {
-      return;
-    }
-
-    const tabId = activeTab.tabId;
-
-    const refreshPrice = () => {
-      chrome.tabs.sendMessage(tabId, { type: 'RUN_TASK_ONCE' }, () => {
-        if (chrome.runtime.lastError) {
-          console.warn('Failed to refresh price:', chrome.runtime.lastError.message);
-        }
-      });
-    };
-
-    const intervalId = window.setInterval(refreshPrice, 10000); // 每10秒刷新一次
-
-    return () => {
-      window.clearInterval(intervalId);
-    };
   }, [activeTab.isSupported, activeTab.tabId]);
 
   useEffect(() => {
@@ -982,8 +961,14 @@ export function Popup(): React.ReactElement {
     const target = getPointsTarget(state);
 
     setPriceOffsetMode(mode);
-    setBuyPriceOffset(formatSpreadInputValue(buyOffset));
-    setSellPriceOffset(formatSpreadInputValue(sellOffset));
+
+    if (!isEditingBuyPriceOffset.current) {
+      setBuyPriceOffset(formatSpreadInputValue(buyOffset));
+    }
+
+    if (!isEditingSellPriceOffset.current) {
+      setSellPriceOffset(formatSpreadInputValue(sellOffset));
+    }
 
     if (isPointsFactorLocked && sanitizedPointsFactorLockValue !== null) {
       setLocalPointsFactor(String(sanitizedPointsFactorLockValue));
@@ -1479,13 +1464,13 @@ export function Popup(): React.ReactElement {
                 const mode = e.target.value as PriceOffsetMode;
                 setPriceOffsetMode(mode);
                 let buyOffset = 0.01;
-                let sellOffset = 0.01;
+                let sellOffset = -0.01;
                 if (mode === 'sideways') {
                   buyOffset = 0.01;
-                  sellOffset = 0.01;
+                  sellOffset = -0.01;
                 } else if (mode === 'bullish') {
                   buyOffset = 0.01;
-                  sellOffset = -0.01;
+                  sellOffset = 0.02;
                 }
                 setBuyPriceOffset(String(buyOffset));
                 setSellPriceOffset(String(sellOffset));
@@ -1503,7 +1488,7 @@ export function Popup(): React.ReactElement {
                   <Space size={6}>
                     <span>上涨模式</span>
                     <Text type="secondary" style={{ fontSize: 11 }}>
-                      (买入: +0.01%, 卖出: -0.01%)
+                      (买入: +0.01%, 卖出: +0.02%)
                     </Text>
                   </Space>
                 </Radio>
@@ -1511,7 +1496,7 @@ export function Popup(): React.ReactElement {
                   <Space size={6}>
                     <span>横盘模式</span>
                     <Text type="secondary" style={{ fontSize: 11 }}>
-                      (买入: +0.01%, 卖出: +0.01%)
+                      (买入: +0.01%, 卖出: -0.01%)
                     </Text>
                   </Space>
                 </Radio>
@@ -1523,7 +1508,7 @@ export function Popup(): React.ReactElement {
               <Space direction="vertical" size="small" style={{ width: '100%' }}>
                 <div>
                   <Text type="secondary" style={{ fontSize: 12 }}>
-                    买入价差 (%)
+                    {t('settings.buyPriceOffset')}
                   </Text>
                   <InputNumber
                     min={-5}
@@ -1531,10 +1516,21 @@ export function Popup(): React.ReactElement {
                     step={0.001}
                     placeholder="0.01"
                     value={Number.parseFloat(buyPriceOffset)}
-                    onChange={(value) => setBuyPriceOffset(String(value ?? 0.01))}
+                    onFocus={() => {
+                      isEditingBuyPriceOffset.current = true;
+                    }}
+                    onChange={(value) => {
+                      if (value != null) {
+                        setBuyPriceOffset(String(value));
+                      }
+                    }}
                     onBlur={() => {
+                      isEditingBuyPriceOffset.current = false;
+                      const parsed = Number.parseFloat(buyPriceOffset);
+                      const finalValue = Number.isFinite(parsed) && parsed !== 0 ? parsed : 0.01;
+                      setBuyPriceOffset(String(finalValue));
                       void persistSchedulerSettings({
-                        buyPriceOffset: Number.parseFloat(buyPriceOffset),
+                        buyPriceOffset: finalValue,
                       });
                     }}
                     disabled={controlsBusy}
@@ -1546,18 +1542,29 @@ export function Popup(): React.ReactElement {
                 </div>
                 <div>
                   <Text type="secondary" style={{ fontSize: 12 }}>
-                    卖出价差 (%)
+                    {t('settings.sellPriceOffset')}
                   </Text>
                   <InputNumber
                     min={-5}
                     max={5}
                     step={0.001}
-                    placeholder="0.01"
+                    placeholder="-0.01"
                     value={Number.parseFloat(sellPriceOffset)}
-                    onChange={(value) => setSellPriceOffset(String(value ?? 0.01))}
+                    onFocus={() => {
+                      isEditingSellPriceOffset.current = true;
+                    }}
+                    onChange={(value) => {
+                      if (value != null) {
+                        setSellPriceOffset(String(value));
+                      }
+                    }}
                     onBlur={() => {
+                      isEditingSellPriceOffset.current = false;
+                      const parsed = Number.parseFloat(sellPriceOffset);
+                      const finalValue = Number.isFinite(parsed) && parsed !== 0 ? parsed : -0.01;
+                      setSellPriceOffset(String(finalValue));
                       void persistSchedulerSettings({
-                        sellPriceOffset: Number.parseFloat(sellPriceOffset),
+                        sellPriceOffset: finalValue,
                       });
                     }}
                     disabled={controlsBusy}

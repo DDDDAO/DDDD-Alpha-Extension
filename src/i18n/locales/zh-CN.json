@@ -49,6 +49,7 @@
     "totalCost": "总损耗",
     "totalCostTooltip": "总损耗是简单的初始余额 - 当前余额获得,如果发现损耗很高,可能是因为有一些代币没有被正确卖出导致,请检查代币余额。",
     "costRatio": "损耗率",
+    "sessionDuration": "本轮运行耗时",
     "updateTime": "更新时间",
     "joinTelegram": "加入电报社区一起讨论Alpha刷分心得:",
     "refreshBalanceTooltip": "使用当前余额刷新初始余额",
@@ -84,6 +85,6 @@
     "registerBinanceUrl": "https://www.binance.com/zh-CN/join?ref=DDDDEXE"
   },
   "orderHistory": {
-    "error": "订单历史请求失败"
+    "error": "订单历史请求失败 - 请确认已经登录币安，并尝试刷新页面并重新打开插件"
   }
 }

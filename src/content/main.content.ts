@@ -18,10 +18,11 @@ import {
 } from '../lib/messages.js';
 import { buildOrderHistoryUrl, summarizeOrderHistoryData } from '../lib/orderHistory.js';
 
-const POLLING_INTERVAL_MS = 1_000;
 const ORDER_PLACEMENT_COOLDOWN_MS = 5_000;
 const LIMIT_STATE_TIMEOUT_MS = 2_000;
 const LIMIT_STATE_POLL_INTERVAL_MS = 100;
+const MIN_AUTOMATION_DELAY_MS = 5_000;
+const MAX_AUTOMATION_DELAY_MS = 10_000;
 
 const MIN_PRICE_OFFSET_PERCENT = 0;
 const MAX_PRICE_OFFSET_PERCENT = 5;
@@ -267,7 +268,6 @@ async function refreshOrderHistorySnapshotForAutomation(): Promise<OrderHistoryS
   }
 }
 
-let pollingTimerId: number | undefined;
 let evaluationInProgress = false;
 let loginErrorDispatched = false;
 let lastOrderPlacedAt = 0;
@@ -277,6 +277,8 @@ let automationStateWatcherInitialized = false;
 let priceOffsetPercent = DEFAULT_PRICE_OFFSET_PERCENT;
 let pointsFactor = DEFAULT_POINTS_FACTOR;
 let pointsTarget = DEFAULT_POINTS_TARGET;
+let nextEvaluationTimeoutId: number | undefined;
+let automationLoopActive = false;
 
 const MULTIPLIER_CACHE_DURATION_MS = 5 * 60_000;
 
@@ -436,7 +438,7 @@ async function handleAutomation(): Promise<void> {
 
 async function handleManualRun(): Promise<void> {
   if (evaluationInProgress) {
-    throw new Error('Automation is busy; try again shortly.');
+    return;
   }
 
   await runEvaluationCycle(false, { placeOrder: false });
@@ -459,31 +461,27 @@ function checkForLoginPrompt(): boolean {
 async function ensurePolling(): Promise<void> {
   if (!isExtensionContextValid()) {
     // eslint-disable-next-line no-console
-    console.warn('[dddd-alpah-extension] Extension context invalid, tearing down');
+    console.warn('[dddd-alpah-extension] Extension context invalid, skipping evaluation');
     teardownPolling();
     return;
   }
 
   if (!automationEnabled) {
     // eslint-disable-next-line no-console
-    console.log('[dddd-alpah-extension] Automation not enabled, tearing down');
-    teardownPolling();
+    console.log('[dddd-alpah-extension] Automation not enabled, skipping evaluation');
     return;
   }
 
-  if (pollingTimerId === undefined) {
-    // eslint-disable-next-line no-console
-    console.log(
-      '[dddd-alpah-extension] Starting polling with interval:',
-      POLLING_INTERVAL_MS,
-      'ms',
-    );
-    pollingTimerId = window.setInterval(() => {
-      void runEvaluationCycle(true, { placeOrder: true });
-    }, POLLING_INTERVAL_MS);
+  if (evaluationInProgress || nextEvaluationTimeoutId !== undefined) {
+    return;
   }
 
-  await runEvaluationCycle(true, { placeOrder: true });
+  if (!automationLoopActive) {
+    scheduleNextAutomationCycle(0);
+    return;
+  }
+
+  scheduleNextAutomationCycle();
 }
 
 interface EvaluationOptions {
@@ -1053,14 +1051,46 @@ function getTradingFormPanel(): HTMLElement | null {
 }
 
 function teardownPolling(): void {
-  if (pollingTimerId !== undefined) {
-    // eslint-disable-next-line no-console
-    console.log('[dddd-alpah-extension] Tearing down polling');
-    clearInterval(pollingTimerId);
-    pollingTimerId = undefined;
+  if (nextEvaluationTimeoutId !== undefined) {
+    clearTimeout(nextEvaluationTimeoutId);
+    nextEvaluationTimeoutId = undefined;
   }
 
+  automationLoopActive = false;
   evaluationInProgress = false;
+}
+
+function getRandomAutomationDelay(): number {
+  const spread = MAX_AUTOMATION_DELAY_MS - MIN_AUTOMATION_DELAY_MS;
+  const offset = Math.random() * spread;
+  return Math.floor(MIN_AUTOMATION_DELAY_MS + offset);
+}
+
+function scheduleNextAutomationCycle(delayMs?: number): void {
+  if (!automationEnabled) {
+    return;
+  }
+
+  const delay = typeof delayMs === 'number' && delayMs >= 0 ? delayMs : getRandomAutomationDelay();
+
+  if (nextEvaluationTimeoutId !== undefined) {
+    clearTimeout(nextEvaluationTimeoutId);
+  }
+
+  automationLoopActive = true;
+  nextEvaluationTimeoutId = window.setTimeout(() => {
+    nextEvaluationTimeoutId = undefined;
+
+    if (!automationEnabled || !isExtensionContextValid()) {
+      return;
+    }
+
+    void runEvaluationCycle(true, { placeOrder: true }).finally(() => {
+      if (automationEnabled) {
+        scheduleNextAutomationCycle();
+      }
+    });
+  }, delay);
 }
 
 function isExtensionContextValid(): boolean {

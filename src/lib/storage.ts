@@ -43,6 +43,8 @@ export interface SchedulerState {
   };
   settings: SchedulerSettings;
   requiresLogin?: boolean;
+  sessionStartedAt?: string;
+  sessionStoppedAt?: string;
 }
 
 const DEFAULT_SETTINGS: SchedulerSettings = {

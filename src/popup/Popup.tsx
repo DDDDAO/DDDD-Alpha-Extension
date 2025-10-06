@@ -183,8 +183,45 @@ interface ActiveTabContext {
   isSupported: boolean;
 }
 
+function formatSessionDuration(durationMs: number | null, locale: string): string {
+  if (durationMs === null || !Number.isFinite(durationMs) || durationMs <= 0) {
+    return '—';
+  }
+
+  const totalSeconds = Math.floor(durationMs / 1000);
+
+  if (totalSeconds < 60) {
+    if (locale.startsWith('zh')) {
+      return `${totalSeconds} 秒`;
+    }
+
+    const label = totalSeconds === 1 ? 'second' : 'seconds';
+    return `${totalSeconds} ${label}`;
+  }
+
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+
+  if (seconds === 0) {
+    if (locale.startsWith('zh')) {
+      return `${minutes} 分钟`;
+    }
+
+    const minuteLabel = minutes === 1 ? 'minute' : 'minutes';
+    return `${minutes} ${minuteLabel}`;
+  }
+
+  if (locale.startsWith('zh')) {
+    return `${minutes} 分 ${seconds} 秒`;
+  }
+
+  const minuteLabel = minutes === 1 ? 'minute' : 'minutes';
+  const secondLabel = seconds === 1 ? 'second' : 'seconds';
+  return `${minutes} ${minuteLabel} ${seconds} ${secondLabel}`;
+}
+
 export function Popup(): React.ReactElement {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const { getBinanceAlphaUrl } = useI18nUrl();
   const [state, setState] = useState<SchedulerState | null>(null);
   const [tokenDirectory, setTokenDirectory] = useState<Record<string, TokenDirectoryEntry>>({
@@ -209,6 +246,7 @@ export function Popup(): React.ReactElement {
   const [airdropForecast, setAirdropForecast] = useState<ProcessedAirdrop[]>([]);
   const [airdropLoading, setAirdropLoading] = useState(false);
   const [orderHistoryError, setOrderHistoryError] = useState<string | null>(null);
+  const [nowTick, setNowTick] = useState(Date.now());
 
   const isEditingPriceOffset = useRef(false);
   const isEditingPointsFactor = useRef(false);
@@ -220,6 +258,7 @@ export function Popup(): React.ReactElement {
     tabId: null,
     status: 'idle',
   });
+  const hasRequestedAveragePrice = useRef(false);
 
   const spreadId = useId();
   const pointsFactorId = useId();
@@ -513,6 +552,43 @@ export function Popup(): React.ReactElement {
   }, [requestCurrentBalanceFromTab, requestTokenSymbolFromTab]);
 
   useEffect(() => {
+    if (hasRequestedAveragePrice.current) {
+      return;
+    }
+
+    if (!activeTab.isSupported || typeof activeTab.tabId !== 'number') {
+      return;
+    }
+
+    hasRequestedAveragePrice.current = true;
+
+    chrome.tabs.sendMessage(activeTab.tabId, { type: 'RUN_TASK_ONCE' }, () => {
+      if (chrome.runtime.lastError) {
+        console.warn('Failed to trigger VWAP refresh:', chrome.runtime.lastError.message);
+        hasRequestedAveragePrice.current = false;
+      }
+    });
+  }, [activeTab.isSupported, activeTab.tabId]);
+
+  useEffect(() => {
+    const sessionStart = state?.sessionStartedAt ?? null;
+    const sessionStop = state?.sessionStoppedAt ?? null;
+    const enabled = state?.isEnabled ?? false;
+
+    if (!sessionStart || sessionStop || !enabled) {
+      return;
+    }
+
+    const timer = window.setInterval(() => {
+      setNowTick(Date.now());
+    }, 1000);
+
+    return () => {
+      window.clearInterval(timer);
+    };
+  }, [state?.sessionStartedAt, state?.sessionStoppedAt, state?.isEnabled]);
+
+  useEffect(() => {
     void loadState();
     void refreshActiveTab();
     void fetchStableCoins(); // 初始加载稳定币种
@@ -731,18 +807,43 @@ export function Popup(): React.ReactElement {
       pointsFactor?: number;
       pointsTarget?: number;
     }): Promise<void> => {
-      const baseState = state ?? {
-        isRunning: false,
-        isEnabled: false,
-        settings: {
+      let baseState = state;
+
+      if (!baseState) {
+        const stored = await chrome.storage.local.get(STORAGE_KEY);
+        baseState = (stored[STORAGE_KEY] as SchedulerState | undefined) ?? {
+          isRunning: false,
+          isEnabled: false,
+          settings: {
+            priceOffsetPercent: DEFAULT_PRICE_OFFSET_PERCENT,
+            tokenAddress: BUILTIN_DEFAULT_TOKEN_ADDRESS,
+            pointsFactor: DEFAULT_POINTS_FACTOR,
+            pointsTarget: DEFAULT_POINTS_TARGET,
+          },
+          requiresLogin: false,
+        };
+      }
+
+      const normalizedBaseState: SchedulerState = {
+        isRunning: baseState.isRunning ?? false,
+        isEnabled: baseState.isEnabled ?? false,
+        settings: baseState.settings ?? {
           priceOffsetPercent: DEFAULT_PRICE_OFFSET_PERCENT,
           tokenAddress: BUILTIN_DEFAULT_TOKEN_ADDRESS,
           pointsFactor: DEFAULT_POINTS_FACTOR,
           pointsTarget: DEFAULT_POINTS_TARGET,
         },
+        lastRun: baseState.lastRun,
+        lastError: baseState.lastError,
+        lastResult: baseState.lastResult,
+        tokenSymbol: baseState.tokenSymbol,
+        dailyBuyVolume: baseState.dailyBuyVolume,
+        requiresLogin: baseState.requiresLogin ?? false,
+        sessionStartedAt: baseState.sessionStartedAt,
+        sessionStoppedAt: baseState.sessionStoppedAt,
       };
 
-      const baseSettings = baseState.settings ?? {
+      const baseSettings = normalizedBaseState.settings ?? {
         priceOffsetPercent: DEFAULT_PRICE_OFFSET_PERCENT,
         tokenAddress: BUILTIN_DEFAULT_TOKEN_ADDRESS,
         pointsFactor: DEFAULT_POINTS_FACTOR,
@@ -750,7 +851,7 @@ export function Popup(): React.ReactElement {
       };
 
       const nextState = {
-        ...baseState,
+        ...normalizedBaseState,
         settings: {
           priceOffsetPercent: baseSettings.priceOffsetPercent,
           tokenAddress: baseSettings.tokenAddress,
@@ -975,6 +1076,26 @@ export function Popup(): React.ReactElement {
   const isRunning = state?.isRunning ?? false;
   const isEnabled = state?.isEnabled ?? false;
   const canOperate = activeTab.isSupported;
+
+  const sessionStartedIso = state?.sessionStartedAt ?? null;
+  const sessionStoppedIso = state?.sessionStoppedAt ?? null;
+
+  let sessionDurationMs: number | null = null;
+  if (sessionStartedIso) {
+    const sessionStartMs = Date.parse(sessionStartedIso);
+    if (Number.isFinite(sessionStartMs)) {
+      if (sessionStoppedIso) {
+        const sessionStopMs = Date.parse(sessionStoppedIso);
+        if (Number.isFinite(sessionStopMs)) {
+          sessionDurationMs = Math.max(0, sessionStopMs - sessionStartMs);
+        }
+      } else if (isEnabled || isRunning) {
+        sessionDurationMs = Math.max(0, nowTick - sessionStartMs);
+      }
+    }
+  }
+
+  const formattedSessionDuration = formatSessionDuration(sessionDurationMs, i18n.language);
 
   const snapshot = state?.lastResult;
   const todayKey = new Date().toISOString().slice(0, 10);
@@ -1581,20 +1702,16 @@ export function Popup(): React.ReactElement {
               />
             </Col>
             <Col span={24}>
-              <div
-                style={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                }}
-              >
-                <Text type="secondary">
-                  <ClockCircleOutlined /> {t('stats.updateTime')}
-                </Text>
-                <Text style={{ fontSize: 12 }}>
-                  {snapshot.timestamp ? new Date(snapshot.timestamp).toLocaleString() : '—'}
-                </Text>
-              </div>
+              <Statistic
+                title={
+                  <Space size={6}>
+                    <ClockCircleOutlined />
+                    {t('stats.sessionDuration')}
+                  </Space>
+                }
+                value={formattedSessionDuration}
+                valueStyle={{ fontSize: 14 }}
+              />
             </Col>
             <Col span={24}>
               <div

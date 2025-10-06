@@ -24,7 +24,12 @@
     "pointsFactor": "Points Factor",
     "pointsFactorTooltip": "KOGE has a 1x points multiplier. If you are trading tokens with 2x or 4x points, please manually adjust this number to ensure the trading volume calculation below is correct.",
     "pointsTarget": "Points Target",
-    "pointsTargetTooltip": "The program will keep running after it starts until it reaches the target points. Common points trading volumes: 14 points -> 16,384; 15 points -> 32,768; 16 points -> 65,536"
+    "pointsTargetTooltip": "The program will keep running after it starts until it reaches the target points. Common points trading volumes: 14 points -> 16,384; 15 points -> 32,768; 16 points -> 65,536",
+    "bullishMode": "Bullish Mode",
+    "bullishModeDesc": "(Buy: +0.01%, Sell: +0.02%)",
+    "sidewaysMode": "Sideways Mode",
+    "sidewaysModeDesc": "(Buy: +0.01%, Sell: -0.01%)",
+    "customMode": "Custom"
   },
   "controls": {
     "start": "Start",
@@ -77,7 +82,9 @@
     "grab": "Flash",
     "quantity": "Airdrop Quantity",
     "threshold": "Points Threshold",
-    "phase": "Phase"
+    "phase": "Phase",
+    "phaseLabel": "Phase",
+    "tomorrow": "Tomorrow"
   },
   "footer": {
     "madeBy": "Made with ❤️ by",

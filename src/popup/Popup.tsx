@@ -1246,8 +1246,23 @@ export function Popup(): React.ReactElement {
   );
 
   return (
-    <div style={{ width: 420, padding: 16, background: '#f5f5f5', minHeight: 600 }}>
-      <Card bordered={false} style={{ marginBottom: 16 }}>
+    <div
+      style={{
+        width: 420,
+        padding: 16,
+        background: 'linear-gradient(180deg, #f0f4f8 0%, #e2e8f0 100%)',
+        minHeight: 600,
+      }}
+    >
+      <Card
+        bordered={false}
+        style={{
+          marginBottom: 16,
+          borderRadius: 12,
+          boxShadow: '0 4px 16px rgba(0,0,0,0.08)',
+          background: 'linear-gradient(135deg, #ffffff 0%, #f8fafc 100%)',
+        }}
+      >
         <Space direction="vertical" size="middle" style={{ width: '100%' }}>
           <div
             style={{
@@ -1304,7 +1319,12 @@ export function Popup(): React.ReactElement {
                 </Link>
               </Space>
             }
-            style={{ marginBottom: 8 }}
+            style={{
+              marginBottom: 8,
+              borderRadius: 8,
+              border: '1px solid #91d5ff',
+              background: 'linear-gradient(135deg, #e6f7ff 0%, #f0f9ff 100%)',
+            }}
           />
 
           {orderHistoryError ? (
@@ -1313,7 +1333,12 @@ export function Popup(): React.ReactElement {
               showIcon
               message={t('orderHistory.error')}
               description={orderHistoryError}
-              style={{ marginBottom: 8 }}
+              style={{
+                marginBottom: 8,
+                borderRadius: 8,
+                border: '1px solid #ffccc7',
+                background: 'linear-gradient(135deg, #fff1f0 0%, #fff2f0 100%)',
+              }}
             />
           ) : null}
 
@@ -1321,12 +1346,17 @@ export function Popup(): React.ReactElement {
             title={
               <Space>
                 <CheckCircleOutlined style={{ color: '#52c41a' }} />
-                <span>{t('stability.title')}</span>
+                <span style={{ fontWeight: 600 }}>{t('stability.title')}</span>
               </Space>
             }
             bordered={false}
             size="small"
-            style={{ marginBottom: 8 }}
+            style={{
+              marginBottom: 8,
+              borderRadius: 10,
+              boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
+              background: 'linear-gradient(135deg, #f6ffed 0%, #fcffe6 100%)',
+            }}
           >
             {stabilityLoading ? (
               <Text type="secondary" style={{ fontSize: 12 }}>
@@ -1420,10 +1450,14 @@ export function Popup(): React.ReactElement {
           </Card>
 
           <Card
-            title={t('token.currentToken')}
+            title={<span style={{ fontWeight: 600 }}>{t('token.currentToken')}</span>}
             bordered={false}
             size="small"
-            style={{ marginBottom: 8 }}
+            style={{
+              marginBottom: 8,
+              borderRadius: 10,
+              boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
+            }}
           >
             <Space direction="vertical" size="small" style={{ width: '100%' }}>
               <div>
@@ -1490,7 +1524,15 @@ export function Popup(): React.ReactElement {
         </Space>
       </Card>
 
-      <Card title={t('settings.title')} size="small" style={{ marginBottom: 16 }}>
+      <Card
+        title={<span style={{ fontWeight: 600 }}>{t('settings.title')}</span>}
+        size="small"
+        style={{
+          marginBottom: 16,
+          borderRadius: 12,
+          boxShadow: '0 4px 12px rgba(0,0,0,0.08)',
+        }}
+      >
         <Space direction="vertical" size="middle" style={{ width: '100%' }}>
           <div>
             <Space size={6} style={{ marginBottom: 8 }}>
@@ -1527,21 +1569,21 @@ export function Popup(): React.ReactElement {
               <Space direction="vertical" size="small" style={{ width: '100%' }}>
                 <Radio value="bullish">
                   <Space size={6}>
-                    <span>上涨模式</span>
+                    <span>{t('settings.bullishMode')}</span>
                     <Text type="secondary" style={{ fontSize: 11 }}>
-                      (买入: +0.01%, 卖出: +0.02%)
+                      {t('settings.bullishModeDesc')}
                     </Text>
                   </Space>
                 </Radio>
                 <Radio value="sideways">
                   <Space size={6}>
-                    <span>横盘模式</span>
+                    <span>{t('settings.sidewaysMode')}</span>
                     <Text type="secondary" style={{ fontSize: 11 }}>
-                      (买入: +0.01%, 卖出: -0.01%)
+                      {t('settings.sidewaysModeDesc')}
                     </Text>
                   </Space>
                 </Radio>
-                <Radio value="custom">自定义</Radio>
+                <Radio value="custom">{t('settings.customMode')}</Radio>
               </Space>
             </Radio.Group>
 
@@ -1736,7 +1778,16 @@ export function Popup(): React.ReactElement {
         )}
 
         {successfulTradeLimitReached && (
-          <Alert message={SUCCESSFUL_TRADES_LIMIT_MESSAGE} type="warning" showIcon />
+          <Alert
+            message={SUCCESSFUL_TRADES_LIMIT_MESSAGE}
+            type="warning"
+            showIcon
+            style={{
+              borderRadius: 8,
+              border: '1px solid #ffe58f',
+              background: 'linear-gradient(135deg, #fffbe6 0%, #fffaed 100%)',
+            }}
+          />
         )}
 
         {typeof todaysAlphaPoints === 'number' &&
@@ -1747,6 +1798,11 @@ export function Popup(): React.ReactElement {
               description={`${t('controls.currentPoints')} ${todaysAlphaPoints} ≥ ${t('controls.target')} ${pointsTargetValue}`}
               type="success"
               showIcon
+              style={{
+                borderRadius: 8,
+                border: '1px solid #b7eb8f',
+                background: 'linear-gradient(135deg, #f6ffed 0%, #f0ffe6 100%)',
+              }}
             />
           )}
       </Space>
@@ -1755,13 +1811,18 @@ export function Popup(): React.ReactElement {
         <Card
           title={
             <Space size={8}>
-              {t('stats.todayStats')}
+              <span style={{ fontWeight: 600 }}>{t('stats.todayStats')}</span>
               <Tooltip title={t('stats.statsTooltip')}>
                 <InfoCircleOutlined style={{ color: '#1677ff' }} />
               </Tooltip>
             </Space>
           }
           size="small"
+          style={{
+            borderRadius: 12,
+            boxShadow: '0 4px 12px rgba(0,0,0,0.08)',
+            background: 'linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%)',
+          }}
         >
           <Row gutter={[16, 16]}>
             <Col span={12}>
@@ -1922,8 +1983,8 @@ export function Popup(): React.ReactElement {
       <Card
         title={
           <Space>
-            <BellOutlined style={{ color: '#ff4d4f' }} />
-            <span>{t('airdrop.title')}</span>
+            <BellOutlined style={{ color: '#ff4d4f', fontSize: 16 }} />
+            <span style={{ fontWeight: 600 }}>{t('airdrop.title')}</span>
             <Text type="secondary" style={{ fontSize: 11 }}>
               {t('airdrop.autoUpdate')}
             </Text>
@@ -1931,10 +1992,15 @@ export function Popup(): React.ReactElement {
         }
         bordered={false}
         size="small"
-        style={{ marginTop: 16 }}
+        style={{
+          marginTop: 16,
+          borderRadius: 12,
+          boxShadow: '0 4px 12px rgba(255, 77, 79, 0.12)',
+          background: 'linear-gradient(135deg, #fff7e6 0%, #fffbf0 100%)',
+        }}
         extra={
           <Button
-            type="text"
+            type="primary"
             size="small"
             icon={<SyncOutlined spin={airdropLoading} />}
             onClick={() => {
@@ -1951,6 +2017,12 @@ export function Popup(): React.ReactElement {
               }
             }}
             disabled={airdropLoading}
+            style={{
+              background: 'linear-gradient(135deg, #1890ff 0%, #40a9ff 100%)',
+              border: 'none',
+              borderRadius: 6,
+              boxShadow: '0 2px 6px rgba(24, 144, 255, 0.25)',
+            }}
           >
             {t('controls.refresh')}
           </Button>
@@ -2050,7 +2122,9 @@ export function Popup(): React.ReactElement {
                                 >
                                   {/* 【复刻】完全按照原代码格式显示 */}
                                   {displaySymbol}
-                                  {item.phase && item.phase > 1 && `-阶段${item.phase}`}
+                                  {item.phase &&
+                                    item.phase > 1 &&
+                                    `-${t('airdrop.phaseLabel')}${item.phase}`}
                                   {item.type === 'tge' && ' (TGE)'}
                                 </Text>
                                 {/* 【复刻】完成标记 - 使用SVG图标 */}
@@ -2088,7 +2162,7 @@ export function Popup(): React.ReactElement {
                                   boxShadow: '0 2px 6px rgba(0,0,0,0.15)',
                                 }}
                               >
-                                {item.time} {item.type === 'grab' && '秒杀'}
+                                {item.time} {item.type === 'grab' && t('airdrop.grab')}
                                 {item.type === 'tge' && item.type !== 'grab' && 'TGE'}
                               </Text>
                             </Space>
@@ -2199,7 +2273,9 @@ export function Popup(): React.ReactElement {
                                 <Text strong style={{ fontSize: 13, color: '#1890ff' }}>
                                   {/* 【复刻】完全按照原代码格式显示 */}
                                   {displaySymbol}
-                                  {item.phase && item.phase > 1 && `-阶段${item.phase}`}
+                                  {item.phase &&
+                                    item.phase > 1 &&
+                                    `-${t('airdrop.phaseLabel')}${item.phase}`}
                                   {item.type === 'tge' && ' (TGE)'}
                                 </Text>
                               </Space>
@@ -2219,7 +2295,7 @@ export function Popup(): React.ReactElement {
                                   boxShadow: '0 2px 6px rgba(0,0,0,0.15)',
                                 }}
                               >
-                                {item.time} {item.type === 'grab' && '秒杀'}
+                                {item.time} {item.type === 'grab' && t('airdrop.grab')}
                               </Text>
                             </Space>
                             <Space size="middle" style={{ fontSize: 11, color: '#666' }}>

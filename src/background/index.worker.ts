@@ -8,7 +8,9 @@ import { calculateAlphaPointStats } from '../lib/alphaPoints.js';
 import type { RuntimeMessage } from '../lib/messages.js';
 import { getSchedulerState, updateSchedulerState } from '../lib/storage.js';
 import { getTab } from '../lib/tabs.js';
-import { initAirdropMonitor } from './airdrop-monitor.js';
+
+// 空投监控已移至Popup网页环境 - Service Worker的fetch会被Cloudflare 403拦截
+// import { initAirdropMonitor } from './airdrop-monitor.js';
 
 const BINANCE_ALPHA_PATTERN =
   /^https:\/\/www\.binance\.com\/(?:[a-z]{2}(?:-[A-Z]{2})?\/)alpha\/bsc\/(0x[a-fA-F0-9]{40})(?:[/?#]|$)/u;
@@ -45,8 +47,9 @@ let immediateRunScheduled = false;
 
 void bootstrapScheduler();
 
-// 初始化空投监控
-initAirdropMonitor();
+// 空投监控已移至Popup网页环境 - Service Worker的fetch会被Cloudflare 403拦截
+// Popup打开时会在网页环境中直接fetch，完全模仿binance helper的实现
+// initAirdropMonitor();
 
 chrome.runtime.onInstalled.addListener(() => {
   void bootstrapScheduler();

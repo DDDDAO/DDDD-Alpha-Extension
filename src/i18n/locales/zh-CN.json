@@ -24,7 +24,12 @@
     "pointsFactor": "积分系数",
     "pointsFactorTooltip": "koge是1倍积分,如果刷的是2倍或者4倍积分代币,请手动改一下这个数字来确保下面的交易量计算正确。",
     "pointsTarget": "积分目标",
-    "pointsTargetTooltip": "程序开始后会一直运行,直到达到目标积分。常见的几个积分交易量:14分->16,384; 15分->32,768; 16分->65,536"
+    "pointsTargetTooltip": "程序开始后会一直运行,直到达到目标积分。常见的几个积分交易量:14分->16,384; 15分->32,768; 16分->65,536",
+    "bullishMode": "上涨模式",
+    "bullishModeDesc": "(买入: +0.01%, 卖出: +0.02%)",
+    "sidewaysMode": "横盘模式",
+    "sidewaysModeDesc": "(买入: +0.01%, 卖出: -0.01%)",
+    "customMode": "自定义"
   },
   "controls": {
     "start": "启动",
@@ -77,7 +82,9 @@
     "grab": "秒杀",
     "quantity": "空投数量",
     "threshold": "积分门槛",
-    "phase": "阶段"
+    "phase": "阶段",
+    "phaseLabel": "阶段",
+    "tomorrow": "明天"
   },
   "footer": {
     "madeBy": "Made with ❤️ by",

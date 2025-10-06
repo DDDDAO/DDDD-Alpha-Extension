@@ -362,6 +362,7 @@ chrome.runtime.onMessage.addListener((message: RuntimeMessage, _sender, sendResp
           firstBalanceToday: nextDaily.firstBalance,
         },
         requiresLogin: false,
+        sessionStoppedAt: shouldAutoStop ? timestamp : state.sessionStoppedAt,
       };
     });
     sendResponse({ acknowledged: true });
@@ -566,6 +567,7 @@ async function handleControlStart(tokenAddress?: string, tabId?: number): Promis
   }
 
   const sanitizedTokenOverride = sanitizeTokenAddress(tokenAddress);
+  const sessionStartedAt = new Date().toISOString();
 
   await updateSchedulerState((current) => {
     const resolvedToken =
@@ -574,6 +576,8 @@ async function handleControlStart(tokenAddress?: string, tabId?: number): Promis
     return {
       ...current,
       isEnabled: true,
+      sessionStartedAt,
+      sessionStoppedAt: undefined,
       settings: {
         ...current.settings,
         tokenAddress: resolvedToken,
@@ -589,11 +593,13 @@ async function handleControlStart(tokenAddress?: string, tabId?: number): Promis
 }
 
 async function handleControlStop(): Promise<void> {
+  const sessionStoppedAt = new Date().toISOString();
   await clearAutomationAlarm();
   await updateSchedulerState((state) => ({
     ...state,
     isEnabled: false,
     isRunning: false,
+    sessionStoppedAt,
   }));
 }
 

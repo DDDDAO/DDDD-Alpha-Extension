@@ -175,6 +175,35 @@ function determineBucket(
   return null;
 }
 
+function getLocale(): string {
+  try {
+    return localStorage.getItem('dddd-alpha-language') || 'zh-CN';
+  } catch {
+    return 'zh-CN';
+  }
+}
+
+function formatDatePrefix(month: number, day: number, locale: string): string {
+  if (locale === 'en') {
+    const monthNames = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
+    ];
+    return `${monthNames[month - 1]} ${day}`;
+  }
+  return `${month}月${day}日`;
+}
+
 function buildDisplayTime(
   baseLabel: string,
   hasExplicitTime: boolean,
@@ -182,6 +211,7 @@ function buildDisplayTime(
   categoryDate: string | null,
   referenceInfo: LocalDateInfo | null,
 ): string {
+  const locale = getLocale();
   const trimmedBase = baseLabel.trim();
   const normalizedBase = trimmedBase.length > 0 ? trimmedBase : baseLabel;
 
@@ -190,10 +220,11 @@ function buildDisplayTime(
   }
 
   if (bucket === 'tomorrow') {
+    const tomorrowText = locale === 'en' ? 'Tomorrow' : '明天';
     if (!hasExplicitTime) {
-      return '明天';
+      return tomorrowText;
     }
-    return `明天 ${normalizedBase}`;
+    return `${tomorrowText} ${normalizedBase}`;
   }
 
   const referenceDate = referenceInfo?.dateTime
@@ -208,7 +239,7 @@ function buildDisplayTime(
 
   const month = referenceDate.getMonth() + 1;
   const day = referenceDate.getDate();
-  const prefix = `${month}月${day}日`;
+  const prefix = formatDatePrefix(month, day, locale);
 
   if (!hasExplicitTime) {
     return prefix;
@@ -277,8 +308,9 @@ export function processAirdropApiResponse(apiData: AirdropApiResponse | null): A
       return;
     }
 
+    const locale = getLocale();
     const baseTimeFromApi = sanitizeText(airdrop.utc) ?? sanitizeText(airdrop.time);
-    let baseLabel = '待公布';
+    let baseLabel = locale === 'en' ? 'TBA' : '待公布';
     let hasExplicitTime = false;
 
     if (localInfo && !localInfo.usedFallbackTime) {
@@ -286,7 +318,8 @@ export function processAirdropApiResponse(apiData: AirdropApiResponse | null): A
       hasExplicitTime = true;
     } else if (baseTimeFromApi) {
       baseLabel = baseTimeFromApi;
-      hasExplicitTime = baseTimeFromApi !== '-' && baseTimeFromApi !== '待公布';
+      hasExplicitTime =
+        baseTimeFromApi !== '-' && baseTimeFromApi !== '待公布' && baseTimeFromApi !== 'TBA';
     }
 
     const displayTime = buildDisplayTime(

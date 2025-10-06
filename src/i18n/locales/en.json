@@ -1,0 +1,90 @@
+{
+  "app": {
+    "title": "DDDD Alpha Tool",
+    "description": "Alpha Auto Bot"
+  },
+  "plugin": {
+    "title": "Plugin Description",
+    "desc1": "This plugin only assists in calculating order prices and simulates manual operations to fill in order information and click the place order button on the web page. It does not record or transmit any sensitive data.",
+    "desc2": "The plugin is completely open source and free, for learning and communication purposes only. Users should determine whether using the plugin violates Binance Alpha activity rules.",
+    "viewGithub": "View GitHub Repository"
+  },
+  "token": {
+    "currentToken": "Current Token",
+    "noTokenSelected": "No token selected",
+    "pointsMultiplier": "Points Multiplier",
+    "multiplier": "x"
+  },
+  "settings": {
+    "title": "Settings",
+    "priceOffset": "Price Offset (%)",
+    "priceOffsetTooltip": "The tool will automatically refresh the average price in real-time and place orders with this price offset setting. The default value is 0.01%, which means it will place buy orders at a price 0.01% higher than the average price and sell orders at a price 0.01% lower than the average price. Most tokens can be traded faster this way. If the price offset is set to 0, buy and sell orders will be placed at the average price simultaneously, with the smallest spread, but there is a risk of non-execution. It is recommended to place orders with a price offset of 0.01% or 0.005% when the price is stable.",
+    "pointsFactor": "Points Factor",
+    "pointsFactorTooltip": "KOGE has a 1x points multiplier. If you are trading tokens with 2x or 4x points, please manually adjust this number to ensure the trading volume calculation below is correct.",
+    "pointsTarget": "Points Target",
+    "pointsTargetTooltip": "The program will keep running after it starts until it reaches the target points. Common points trading volumes: 14 points -> 16,384; 15 points -> 32,768; 16 points -> 65,536"
+  },
+  "controls": {
+    "start": "Start",
+    "stop": "Stop",
+    "refresh": "Refresh",
+    "needAlphaPage": "Need to open Binance Alpha token page",
+    "clickToOpen": "Click here to open",
+    "error": "Error",
+    "running": "Automation running",
+    "targetReached": "Points target reached",
+    "currentPoints": "Current points",
+    "target": "target"
+  },
+  "stats": {
+    "todayStats": "Today's Statistics (UTC)",
+    "statsTooltip": "Trading volume and points data are for reference only. They are calculated for every order placed, not just successful orders. If you manually cancel orders, the trading data will be inaccurate. For more accurate trading data, please check the Binance App Alpha activity page.",
+    "alphaPoints": "Alpha Points",
+    "successfulTrades": "Successful Trades",
+    "buyVolume": "Buy Volume",
+    "toNextPoint": "To Next Point",
+    "averagePrice": "Average Price",
+    "initialBalance": "Initial Balance",
+    "currentBalance": "Current Balance",
+    "totalCost": "Total Cost",
+    "totalCostTooltip": "Total cost is simply initial balance - current balance. If you find the cost is high, it may be because some tokens were not sold correctly. Please check your token balance.",
+    "costRatio": "Cost Ratio",
+    "sessionDuration": "Current run duration",
+    "updateTime": "Update Time",
+    "joinTelegram": "Join our Telegram community to discuss Alpha farming:",
+    "refreshBalanceTooltip": "Refresh initial balance with current balance",
+    "refreshBalance": "Refresh Initial Balance"
+  },
+  "stability": {
+    "title": "Recommended Stable Tokens",
+    "loading": "Loading...",
+    "noData": "No recommended tokens",
+    "stable": "Stable",
+    "quad": "4x",
+    "spread": "Spread",
+    "days": "Days"
+  },
+  "airdrop": {
+    "title": "Airdrop Alert",
+    "autoUpdate": "(Auto-update every 30 minutes)",
+    "loading": "Loading...",
+    "noData": "No airdrop information",
+    "today": "Today's Airdrops",
+    "forecast": "Upcoming Airdrops",
+    "tge": "TGE",
+    "grab": "Flash",
+    "quantity": "Airdrop Quantity",
+    "threshold": "Points Threshold",
+    "phase": "Phase"
+  },
+  "footer": {
+    "madeBy": "Made with ❤️ by",
+    "binanceWallet": "Binance Wallet referral code, 10% fee discount",
+    "binanceWalletUrl": "https://web3.binance.com/en/referral?ref=DDDDEXE",
+    "registerBinance": "Register Binance, 20% fee discount",
+    "registerBinanceUrl": "https://www.binance.com/en/join?ref=DDDDEXE"
+  },
+  "orderHistory": {
+    "error": "Order history request failed"
+  }
+}

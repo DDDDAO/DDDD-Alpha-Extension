@@ -1,0 +1,90 @@
+{
+  "app": {
+    "title": "DDDD Alpha 辅助工具",
+    "description": "Alpha 自动机器人"
+  },
+  "plugin": {
+    "title": "插件说明",
+    "desc1": "本插件仅仅辅助计算挂单价格,并且在网页端模拟人工操作进行填写订单信息并点击下单按钮,不会记录和传输任何敏感数据。",
+    "desc2": "插件完全开源免费,仅为学习交流目的,请使用者自行明确是否会因使用插件违反币安Alpha活动规则",
+    "viewGithub": "查看 GitHub 开源仓库"
+  },
+  "token": {
+    "currentToken": "当前代币",
+    "noTokenSelected": "未选择代币",
+    "pointsMultiplier": "积分倍数",
+    "multiplier": "倍"
+  },
+  "settings": {
+    "title": "设置",
+    "priceOffset": "价格偏移 (%)",
+    "priceOffsetTooltip": "工具会自动实时刷新平均价格,并以价格偏移这个设置进行下单。默认值是万分之一,意思是会以比平均价格高万一的价格挂买单,比平均价格低万一的价格挂卖单,大部分币种这样都可以更快成交。如果把价格偏移设置成0,那么会以平均价格同时挂买单和卖单,这样的价差是最小的,但是有不成交的风险。推荐在价格稳定的时候以万1或者万0.5的价格偏移进行下单。",
+    "pointsFactor": "积分系数",
+    "pointsFactorTooltip": "koge是1倍积分,如果刷的是2倍或者4倍积分代币,请手动改一下这个数字来确保下面的交易量计算正确。",
+    "pointsTarget": "积分目标",
+    "pointsTargetTooltip": "程序开始后会一直运行,直到达到目标积分。常见的几个积分交易量:14分->16,384; 15分->32,768; 16分->65,536"
+  },
+  "controls": {
+    "start": "启动",
+    "stop": "停止",
+    "refresh": "刷新",
+    "needAlphaPage": "需要打开 Binance Alpha 代币页面",
+    "clickToOpen": "点击此处打开",
+    "error": "错误",
+    "running": "自动化运行中",
+    "targetReached": "积分目标已达成",
+    "currentPoints": "当前积分",
+    "target": "目标"
+  },
+  "stats": {
+    "todayStats": "今日数据统计 (UTC)",
+    "statsTooltip": "交易量数据和分数数据仅供参考,每次下单都会计算,并不是订单成功才算,如果手动取消订单,交易数据就会失真。更准确的交易数据请查看币安App Alpha活动页面",
+    "alphaPoints": "Alpha 积分",
+    "successfulTrades": "成功交易",
+    "buyVolume": "买入量",
+    "toNextPoint": "距下一积分",
+    "averagePrice": "平均价格",
+    "initialBalance": "初始余额",
+    "currentBalance": "当前余额",
+    "totalCost": "总损耗",
+    "totalCostTooltip": "总损耗是简单的初始余额 - 当前余额获得,如果发现损耗很高,可能是因为有一些代币没有被正确卖出导致,请检查代币余额。",
+    "costRatio": "损耗率",
+    "sessionDuration": "本轮运行耗时",
+    "updateTime": "更新时间",
+    "joinTelegram": "加入电报社区一起讨论Alpha刷分心得:",
+    "refreshBalanceTooltip": "使用当前余额刷新初始余额",
+    "refreshBalance": "刷新初始余额"
+  },
+  "stability": {
+    "title": "推荐稳定币种",
+    "loading": "加载中...",
+    "noData": "暂无推荐币种",
+    "stable": "稳定",
+    "quad": "4倍",
+    "spread": "价差",
+    "days": "天数"
+  },
+  "airdrop": {
+    "title": "空投提醒",
+    "autoUpdate": "(每30分钟自动更新)",
+    "loading": "加载中...",
+    "noData": "暂无空投信息",
+    "today": "今日空投",
+    "forecast": "空投预告",
+    "tge": "TGE",
+    "grab": "秒杀",
+    "quantity": "空投数量",
+    "threshold": "积分门槛",
+    "phase": "阶段"
+  },
+  "footer": {
+    "madeBy": "Made with ❤️ by",
+    "binanceWallet": "币安钱包绑定邀请码,手续费9折",
+    "binanceWalletUrl": "https://web3.binance.com/referral?ref=DDDDEXE",
+    "registerBinance": "注册币安,手续费8折",
+    "registerBinanceUrl": "https://www.binance.com/zh-CN/join?ref=DDDDEXE"
+  },
+  "orderHistory": {
+    "error": "订单历史请求失败 - 请确认已经登录币安，并尝试刷新页面并重新打开插件"
+  }
+}

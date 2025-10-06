@@ -26,8 +26,10 @@ import {
   Typography,
 } from 'antd';
 import React, { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { MAX_SUCCESSFUL_TRADES, SUCCESSFUL_TRADES_LIMIT_MESSAGE } from '../config/defaults.js';
 import { STORAGE_KEY, TOKEN_DIRECTORY_STORAGE_KEY } from '../config/storageKey.js';
+import { useI18nUrl } from '../i18n/useI18nUrl';
 import type { ProcessedAirdrop } from '../lib/airdrop.js';
 import { AIRDROP_STORAGE_KEY, processAirdropApiResponse } from '../lib/airdrop.js';
 import { calculateAlphaPointStats } from '../lib/alphaPoints.js';
@@ -39,6 +41,7 @@ import type {
 import { postRuntimeMessage } from '../lib/messages.js';
 import { buildOrderHistoryUrl, summarizeOrderHistoryData } from '../lib/orderHistory.js';
 import type { PriceOffsetMode, SchedulerState } from '../lib/storage';
+import { LanguageSwitcher } from './LanguageSwitcher';
 
 const { Text, Link, Title } = Typography;
 const GITHUB_REPO_URL = 'https://github.com/DDDDAO/DDDD-Alpha-Extension';
@@ -53,8 +56,6 @@ const DEFAULT_POINTS_TARGET = 15;
 const BUILTIN_DEFAULT_TOKEN_ADDRESS = '0xe6df05ce8c8301223373cf5b969afcb1498c5528';
 const BINANCE_ALPHA_PATTERN =
   /^https:\/\/www\.binance\.com\/(?:[a-z]{2}(?:-[A-Z]{2})?\/)alpha\/bsc\/(0x[a-fA-F0-9]{40})(?:[/?#]|$)/u;
-const DEFAULT_BINANCE_ALPHA_URL =
-  'https://www.binance.com/zh-CN/alpha/bsc/0xe6df05ce8c8301223373cf5b969afcb1498c5528';
 
 const TOKEN_LIST_URL =
   'https://www.binance.com/bapi/defi/v1/public/wallet-direct/buw/wallet/cex/alpha/all/token/list';
@@ -183,7 +184,46 @@ interface ActiveTabContext {
   isSupported: boolean;
 }
 
+function formatSessionDuration(durationMs: number | null, locale: string): string {
+  if (durationMs === null || !Number.isFinite(durationMs) || durationMs <= 0) {
+    return '—';
+  }
+
+  const totalSeconds = Math.floor(durationMs / 1000);
+
+  if (totalSeconds < 60) {
+    if (locale.startsWith('zh')) {
+      return `${totalSeconds} 秒`;
+    }
+
+    const label = totalSeconds === 1 ? 'second' : 'seconds';
+    return `${totalSeconds} ${label}`;
+  }
+
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+
+  if (seconds === 0) {
+    if (locale.startsWith('zh')) {
+      return `${minutes} 分钟`;
+    }
+
+    const minuteLabel = minutes === 1 ? 'minute' : 'minutes';
+    return `${minutes} ${minuteLabel}`;
+  }
+
+  if (locale.startsWith('zh')) {
+    return `${minutes} 分 ${seconds} 秒`;
+  }
+
+  const minuteLabel = minutes === 1 ? 'minute' : 'minutes';
+  const secondLabel = seconds === 1 ? 'second' : 'seconds';
+  return `${minutes} ${minuteLabel} ${seconds} ${secondLabel}`;
+}
+
 export function Popup(): React.ReactElement {
+  const { t, i18n } = useTranslation();
+  const { getBinanceAlphaUrl } = useI18nUrl();
   const [state, setState] = useState<SchedulerState | null>(null);
   const [tokenDirectory, setTokenDirectory] = useState<Record<string, TokenDirectoryEntry>>({
     ...FALLBACK_TOKEN_DIRECTORY,
@@ -209,6 +249,7 @@ export function Popup(): React.ReactElement {
   const [airdropForecast, setAirdropForecast] = useState<ProcessedAirdrop[]>([]);
   const [airdropLoading, setAirdropLoading] = useState(false);
   const [orderHistoryError, setOrderHistoryError] = useState<string | null>(null);
+  const [nowTick, setNowTick] = useState(Date.now());
 
   const isEditingPointsFactor = useRef(false);
   const isEditingPointsTarget = useRef(false);
@@ -219,6 +260,7 @@ export function Popup(): React.ReactElement {
     tabId: null,
     status: 'idle',
   });
+  const hasRequestedAveragePrice = useRef(false);
 
   const pointsFactorId = useId();
   const pointsTargetId = useId();
@@ -511,6 +553,43 @@ export function Popup(): React.ReactElement {
   }, [requestCurrentBalanceFromTab, requestTokenSymbolFromTab]);
 
   useEffect(() => {
+    if (hasRequestedAveragePrice.current) {
+      return;
+    }
+
+    if (!activeTab.isSupported || typeof activeTab.tabId !== 'number') {
+      return;
+    }
+
+    hasRequestedAveragePrice.current = true;
+
+    chrome.tabs.sendMessage(activeTab.tabId, { type: 'RUN_TASK_ONCE' }, () => {
+      if (chrome.runtime.lastError) {
+        console.warn('Failed to trigger VWAP refresh:', chrome.runtime.lastError.message);
+        hasRequestedAveragePrice.current = false;
+      }
+    });
+  }, [activeTab.isSupported, activeTab.tabId]);
+
+  useEffect(() => {
+    const sessionStart = state?.sessionStartedAt ?? null;
+    const sessionStop = state?.sessionStoppedAt ?? null;
+    const enabled = state?.isEnabled ?? false;
+
+    if (!sessionStart || sessionStop || !enabled) {
+      return;
+    }
+
+    const timer = window.setInterval(() => {
+      setNowTick(Date.now());
+    }, 1000);
+
+    return () => {
+      window.clearInterval(timer);
+    };
+  }, [state?.sessionStartedAt, state?.sessionStoppedAt, state?.isEnabled]);
+
+  useEffect(() => {
     void loadState();
     void refreshActiveTab();
     void fetchStableCoins(); // 初始加载稳定币种
@@ -732,10 +811,27 @@ export function Popup(): React.ReactElement {
       pointsFactor?: number;
       pointsTarget?: number;
     }): Promise<void> => {
-      const baseState = state ?? {
-        isRunning: false,
-        isEnabled: false,
-        settings: {
+      let baseState = state;
+
+      if (!baseState) {
+        const stored = await chrome.storage.local.get(STORAGE_KEY);
+        baseState = (stored[STORAGE_KEY] as SchedulerState | undefined) ?? {
+          isRunning: false,
+          isEnabled: false,
+          settings: {
+            priceOffsetPercent: DEFAULT_PRICE_OFFSET_PERCENT,
+            tokenAddress: BUILTIN_DEFAULT_TOKEN_ADDRESS,
+            pointsFactor: DEFAULT_POINTS_FACTOR,
+            pointsTarget: DEFAULT_POINTS_TARGET,
+          },
+          requiresLogin: false,
+        };
+      }
+
+      const normalizedBaseState: SchedulerState = {
+        isRunning: baseState.isRunning ?? false,
+        isEnabled: baseState.isEnabled ?? false,
+        settings: baseState.settings ?? {
           priceOffsetPercent: DEFAULT_PRICE_OFFSET_PERCENT,
           priceOffsetMode: 'sideways' as PriceOffsetMode,
           buyPriceOffset: 0.01,
@@ -744,9 +840,17 @@ export function Popup(): React.ReactElement {
           pointsFactor: DEFAULT_POINTS_FACTOR,
           pointsTarget: DEFAULT_POINTS_TARGET,
         },
+        lastRun: baseState.lastRun,
+        lastError: baseState.lastError,
+        lastResult: baseState.lastResult,
+        tokenSymbol: baseState.tokenSymbol,
+        dailyBuyVolume: baseState.dailyBuyVolume,
+        requiresLogin: baseState.requiresLogin ?? false,
+        sessionStartedAt: baseState.sessionStartedAt,
+        sessionStoppedAt: baseState.sessionStoppedAt,
       };
 
-      const baseSettings = baseState.settings ?? {
+      const baseSettings = normalizedBaseState.settings ?? {
         priceOffsetPercent: DEFAULT_PRICE_OFFSET_PERCENT,
         priceOffsetMode: 'sideways' as PriceOffsetMode,
         buyPriceOffset: 0.01,
@@ -757,7 +861,7 @@ export function Popup(): React.ReactElement {
       };
 
       const nextState = {
-        ...baseState,
+        ...normalizedBaseState,
         settings: {
           priceOffsetPercent: baseSettings.priceOffsetPercent,
           priceOffsetMode: baseSettings.priceOffsetMode,
@@ -970,6 +1074,26 @@ export function Popup(): React.ReactElement {
   const isEnabled = state?.isEnabled ?? false;
   const canOperate = activeTab.isSupported;
 
+  const sessionStartedIso = state?.sessionStartedAt ?? null;
+  const sessionStoppedIso = state?.sessionStoppedAt ?? null;
+
+  let sessionDurationMs: number | null = null;
+  if (sessionStartedIso) {
+    const sessionStartMs = Date.parse(sessionStartedIso);
+    if (Number.isFinite(sessionStartMs)) {
+      if (sessionStoppedIso) {
+        const sessionStopMs = Date.parse(sessionStoppedIso);
+        if (Number.isFinite(sessionStopMs)) {
+          sessionDurationMs = Math.max(0, sessionStopMs - sessionStartMs);
+        }
+      } else if (isEnabled || isRunning) {
+        sessionDurationMs = Math.max(0, nowTick - sessionStartMs);
+      }
+    }
+  }
+
+  const formattedSessionDuration = formatSessionDuration(sessionDurationMs, i18n.language);
+
   const snapshot = state?.lastResult;
   const todayKey = new Date().toISOString().slice(0, 10);
   const pointsTargetValue = getPointsTarget(state);
@@ -1077,43 +1201,47 @@ export function Popup(): React.ReactElement {
         <Space direction="vertical" size="middle" style={{ width: '100%' }}>
           <div
             style={{
-              textAlign: 'center',
-              marginBottom: 8,
               display: 'flex',
               alignItems: 'center',
-              justifyContent: 'center',
-              gap: '12px',
+              justifyContent: 'space-between',
+              marginBottom: 8,
             }}
           >
-            <img
-              src={POPUP_LOGO_URL}
-              alt="Logo"
-              style={{ width: '32px', height: '32px', display: 'block' }}
-            />
-            <Title level={3} style={{ color: '#0DA2FF', margin: 0 }}>
-              DDDD Alpha 辅助工具
-            </Title>
-            <Link href="https://t.me/ddddao2025" target="_blank" rel="noopener noreferrer">
+            <div style={{ flex: 1 }} />
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '12px',
+              }}
+            >
               <img
-                src={TG_LOGO_URL}
-                alt="Telegram"
-                style={{ width: '24px', height: '24px', display: 'block' }}
+                src={POPUP_LOGO_URL}
+                alt="Logo"
+                style={{ width: '32px', height: '32px', display: 'block' }}
               />
-            </Link>
+              <Title level={3} style={{ color: '#0DA2FF', margin: 0 }}>
+                {t('app.title')}
+              </Title>
+              <Link href="https://t.me/ddddao2025" target="_blank" rel="noopener noreferrer">
+                <img
+                  src={TG_LOGO_URL}
+                  alt="Telegram"
+                  style={{ width: '24px', height: '24px', display: 'block' }}
+                />
+              </Link>
+            </div>
+            <LanguageSwitcher />
           </div>
 
           <Alert
             type="info"
             showIcon
-            message="插件说明"
+            message={t('plugin.title')}
             description={
               <Space direction="vertical" size={6} style={{ fontSize: 12 }}>
-                <Text style={{ fontSize: 12, color: '#4a4f55' }}>
-                  本插件仅仅辅助计算挂单价格，并且在网页端模拟人工操作进行填写订单信息并点击下单按钮，不会记录和传输任何敏感数据。
-                </Text>
-                <Text style={{ fontSize: 12, color: '#4a4f55' }}>
-                  插件完全开源免费，仅为学习交流目的，请使用者自行明确是否会因使用插件违反币安Alpha活动规则
-                </Text>
+                <Text style={{ fontSize: 12, color: '#4a4f55' }}>{t('plugin.desc1')}</Text>
+                <Text style={{ fontSize: 12, color: '#4a4f55' }}>{t('plugin.desc2')}</Text>
                 <Link href={GITHUB_REPO_URL} target="_blank" rel="noopener noreferrer">
                   <Space size={6} align="center">
                     <img
@@ -1121,7 +1249,7 @@ export function Popup(): React.ReactElement {
                       alt="GitHub"
                       style={{ width: 16, height: 16, display: 'block' }}
                     />
-                    <span style={{ fontSize: 12 }}>查看 GitHub 开源仓库</span>
+                    <span style={{ fontSize: 12 }}>{t('plugin.viewGithub')}</span>
                   </Space>
                 </Link>
               </Space>
@@ -1133,7 +1261,7 @@ export function Popup(): React.ReactElement {
             <Alert
               type="error"
               showIcon
-              message="订单历史请求失败"
+              message={t('orderHistory.error')}
               description={orderHistoryError}
               style={{ marginBottom: 8 }}
             />
@@ -1143,7 +1271,7 @@ export function Popup(): React.ReactElement {
             title={
               <Space>
                 <CheckCircleOutlined style={{ color: '#52c41a' }} />
-                <span>推荐稳定币种</span>
+                <span>{t('stability.title')}</span>
               </Space>
             }
             bordered={false}
@@ -1152,7 +1280,7 @@ export function Popup(): React.ReactElement {
           >
             {stabilityLoading ? (
               <Text type="secondary" style={{ fontSize: 12 }}>
-                加载中...
+                {t('stability.loading')}
               </Text>
             ) : stableCoins.length > 0 ? (
               <List
@@ -1163,7 +1291,7 @@ export function Popup(): React.ReactElement {
                   const normalizedSymbol = coinSymbol.toUpperCase();
                   const tokenInfo = tokenDirectory[normalizedSymbol];
                   const url = tokenInfo?.contractAddress
-                    ? `https://www.binance.com/zh-CN/alpha/bsc/${tokenInfo.contractAddress}`
+                    ? getBinanceAlphaUrl(tokenInfo.contractAddress)
                     : null;
 
                   return (
@@ -1213,20 +1341,20 @@ export function Popup(): React.ReactElement {
                             </Text>
                           )}
                           <Tag color="success" style={{ fontSize: 11, margin: 0 }}>
-                            稳定
+                            {t('stability.stable')}
                           </Tag>
                           {item.md > 0 && (
                             <Tag color="blue" style={{ fontSize: 11, margin: 0 }}>
-                              4倍
+                              {t('stability.quad')}
                             </Tag>
                           )}
                         </Space>
                         <Space size="small">
                           <Text type="secondary" style={{ fontSize: 11 }}>
-                            价差: {item.spr.toFixed(2)}
+                            {t('stability.spread')}: {item.spr.toFixed(2)}
                           </Text>
                           <Text type="secondary" style={{ fontSize: 11 }}>
-                            天数: {item.md}
+                            {t('stability.days')}: {item.md}
                           </Text>
                         </Space>
                       </Space>
@@ -1236,12 +1364,17 @@ export function Popup(): React.ReactElement {
               />
             ) : (
               <Text type="secondary" style={{ fontSize: 12 }}>
-                暂无推荐币种
+                {t('stability.noData')}
               </Text>
             )}
           </Card>
 
-          <Card title="当前代币" bordered={false} size="small" style={{ marginBottom: 8 }}>
+          <Card
+            title={t('token.currentToken')}
+            bordered={false}
+            size="small"
+            style={{ marginBottom: 8 }}
+          >
             <Space direction="vertical" size="small" style={{ width: '100%' }}>
               <div>
                 <Space size={8} align="center">
@@ -1263,11 +1396,12 @@ export function Popup(): React.ReactElement {
                 </Space>
               </div>
               <Text type="secondary" style={{ fontSize: 12, wordBreak: 'break-all' }}>
-                {activeTab.tokenAddress || '未选择代币'}
+                {activeTab.tokenAddress || t('token.noTokenSelected')}
               </Text>
               {isPointsFactorLocked && sanitizedPointsFactorLockValue !== null && (
                 <Text type="secondary" style={{ fontSize: 12 }}>
-                  积分倍数: {sanitizedPointsFactorLockValue} 倍
+                  {t('token.pointsMultiplier')}: {sanitizedPointsFactorLockValue}{' '}
+                  {t('token.multiplier')}
                 </Text>
               )}
             </Space>
@@ -1275,12 +1409,12 @@ export function Popup(): React.ReactElement {
         </Space>
       </Card>
 
-      <Card title="设置" size="small" style={{ marginBottom: 16 }}>
+      <Card title={t('settings.title')} size="small" style={{ marginBottom: 16 }}>
         <Space direction="vertical" size="middle" style={{ width: '100%' }}>
           <div>
             <Space size={6} style={{ marginBottom: 8 }}>
-              <Text type="secondary">买卖价差设置</Text>
-              <Tooltip title="上涨模式：买入更激进（可负价差），卖出价差更低；横盘模式：万1价差挂单；自定义：手动设置买入和卖出价差">
+              <Text type="secondary">{t('settings.priceOffset')}</Text>
+              <Tooltip title={t('settings.priceOffsetTooltip')}>
                 <InfoCircleOutlined style={{ color: '#1677ff' }} />
               </Tooltip>
             </Space>
@@ -1362,8 +1496,8 @@ export function Popup(): React.ReactElement {
 
           <div>
             <Space size={6}>
-              <Text type="secondary">积分系数</Text>
-              <Tooltip title="koge是1倍积分，如果刷的是2倍或者4倍积分代币，请手动改一下这个数字来确保下面的交易量计算正确。">
+              <Text type="secondary">{t('settings.pointsFactor')}</Text>
+              <Tooltip title={t('settings.pointsFactorTooltip')}>
                 <InfoCircleOutlined style={{ color: '#1677ff' }} />
               </Tooltip>
             </Space>
@@ -1390,8 +1524,8 @@ export function Popup(): React.ReactElement {
 
           <div>
             <Space size={6}>
-              <Text type="secondary">积分目标</Text>
-              <Tooltip title="程序开始后会一直运行，直到达到目标积分。常见的几个积分交易量：14分->16,384; 15分->32,768; 16分->65,536">
+              <Text type="secondary">{t('settings.pointsTarget')}</Text>
+              <Tooltip title={t('settings.pointsTargetTooltip')}>
                 <InfoCircleOutlined style={{ color: '#1677ff' }} />
               </Tooltip>
             </Space>
@@ -1431,7 +1565,7 @@ export function Popup(): React.ReactElement {
             onClick={() => void handleStart()}
             size="large"
           >
-            启动
+            {t('controls.start')}
           </Button>
           <Button
             danger
@@ -1441,16 +1575,20 @@ export function Popup(): React.ReactElement {
             onClick={() => void handleStop()}
             size="large"
           >
-            停止
+            {t('controls.stop')}
           </Button>
         </Space>
 
         {!activeTab.isSupported && (
           <Alert
-            message="需要打开 Binance Alpha 代币页面"
+            message={t('controls.needAlphaPage')}
             description={
-              <Link href={DEFAULT_BINANCE_ALPHA_URL} target="_blank" rel="noopener noreferrer">
-                点击此处打开
+              <Link
+                href={getBinanceAlphaUrl(BUILTIN_DEFAULT_TOKEN_ADDRESS)}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                {t('controls.clickToOpen')}
               </Link>
             }
             type="warning"
@@ -1459,11 +1597,17 @@ export function Popup(): React.ReactElement {
         )}
 
         {state?.lastError && (
-          <Alert message="错误" description={state.lastError} type="error" showIcon closable />
+          <Alert
+            message={t('controls.error')}
+            description={state.lastError}
+            type="error"
+            showIcon
+            closable
+          />
         )}
 
         {isEnabled && (
-          <Alert message={'自动化运行中'} type={isRunning ? 'success' : 'info'} showIcon />
+          <Alert message={t('controls.running')} type={isRunning ? 'success' : 'info'} showIcon />
         )}
 
         {successfulTradeLimitReached && (
@@ -1474,8 +1618,8 @@ export function Popup(): React.ReactElement {
           Number.isFinite(todaysAlphaPoints) &&
           todaysAlphaPoints >= pointsTargetValue && (
             <Alert
-              message="积分目标已达成"
-              description={`当前积分 ${todaysAlphaPoints} ≥ 目标 ${pointsTargetValue}`}
+              message={t('controls.targetReached')}
+              description={`${t('controls.currentPoints')} ${todaysAlphaPoints} ≥ ${t('controls.target')} ${pointsTargetValue}`}
               type="success"
               showIcon
             />
@@ -1486,8 +1630,8 @@ export function Popup(): React.ReactElement {
         <Card
           title={
             <Space size={8}>
-              今日数据统计 (UTC)
-              <Tooltip title="交易量数据和分数数据仅供参考，每次下单都会计算，并不是订单成功才算，如果手动取消订单，交易数据就会失真。更准确的交易数据请查看币安App Alpha活动页面">
+              {t('stats.todayStats')}
+              <Tooltip title={t('stats.statsTooltip')}>
                 <InfoCircleOutlined style={{ color: '#1677ff' }} />
               </Tooltip>
             </Space>
@@ -1497,7 +1641,7 @@ export function Popup(): React.ReactElement {
           <Row gutter={[16, 16]}>
             <Col span={12}>
               <Statistic
-                title="Alpha 积分"
+                title={t('stats.alphaPoints')}
                 value={todaysAlphaPoints !== undefined ? todaysAlphaPoints : '—'}
                 prefix={<TrophyOutlined />}
                 valueStyle={{ color: '#3f8600', fontSize: 20 }}
@@ -1505,14 +1649,14 @@ export function Popup(): React.ReactElement {
             </Col>
             <Col span={12}>
               <Statistic
-                title="成功交易"
+                title={t('stats.successfulTrades')}
                 value={successfulTradesToday?.toString() ?? '—'}
                 valueStyle={{ fontSize: 20 }}
               />
             </Col>
             <Col span={12}>
               <Statistic
-                title="买入量"
+                title={t('stats.buyVolume')}
                 value={formatNumber(
                   state?.dailyBuyVolume?.date === todayKey
                     ? state.dailyBuyVolume.total
@@ -1525,7 +1669,7 @@ export function Popup(): React.ReactElement {
             </Col>
             <Col span={12}>
               <Statistic
-                title="距下一积分"
+                title={t('stats.toNextPoint')}
                 value={formatNumber(
                   state?.dailyBuyVolume?.date === todayKey
                     ? state.dailyBuyVolume.nextThresholdDelta
@@ -1537,7 +1681,7 @@ export function Popup(): React.ReactElement {
             </Col>
             <Col span={12}>
               <Statistic
-                title="平均价格"
+                title={t('stats.averagePrice')}
                 value={formatNumber(snapshot.averagePrice, {
                   minimumFractionDigits: 4,
                   maximumFractionDigits: 8,
@@ -1549,8 +1693,8 @@ export function Popup(): React.ReactElement {
               <Statistic
                 title={
                   <Space size={6}>
-                    初始余额
-                    <Tooltip title="使用当前余额刷新初始余额">
+                    {t('stats.initialBalance')}
+                    <Tooltip title={t('stats.refreshBalanceTooltip')}>
                       <span style={{ display: 'inline-flex' }}>
                         <Button
                           size="small"
@@ -1563,7 +1707,7 @@ export function Popup(): React.ReactElement {
                             !Number.isFinite(activeTab.currentBalance)
                           }
                           loading={resettingInitialBalance}
-                          aria-label="刷新初始余额"
+                          aria-label={t('stats.refreshBalance')}
                         />
                       </span>
                     </Tooltip>
@@ -1580,7 +1724,7 @@ export function Popup(): React.ReactElement {
             </Col>
             <Col span={12}>
               <Statistic
-                title="当前余额"
+                title={t('stats.currentBalance')}
                 value={formatNumber(activeTab.currentBalance ?? undefined, {
                   minimumFractionDigits: 2,
                   maximumFractionDigits: 2,
@@ -1592,8 +1736,8 @@ export function Popup(): React.ReactElement {
               <Statistic
                 title={
                   <Space size={6}>
-                    总损耗
-                    <Tooltip title="总损耗是简单的初始余额 - 当前余额获得，如果发现损耗很高，可能是因为有一些代币没有被正确卖出导致，请检查代币余额。">
+                    {t('stats.totalCost')}
+                    <Tooltip title={t('stats.totalCostTooltip')}>
                       <InfoCircleOutlined style={{ color: '#1677ff' }} />
                     </Tooltip>
                   </Space>
@@ -1607,26 +1751,22 @@ export function Popup(): React.ReactElement {
             </Col>
             <Col span={12}>
               <Statistic
-                title="损耗率"
+                title={t('stats.costRatio')}
                 value={formatCostRatio(calculateCostRatio())}
                 valueStyle={{ fontSize: 14 }}
               />
             </Col>
             <Col span={24}>
-              <div
-                style={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                }}
-              >
-                <Text type="secondary">
-                  <ClockCircleOutlined /> 更新时间
-                </Text>
-                <Text style={{ fontSize: 12 }}>
-                  {snapshot.timestamp ? new Date(snapshot.timestamp).toLocaleString() : '—'}
-                </Text>
-              </div>
+              <Statistic
+                title={
+                  <Space size={6}>
+                    <ClockCircleOutlined />
+                    {t('stats.sessionDuration')}
+                  </Space>
+                }
+                value={formattedSessionDuration}
+                valueStyle={{ fontSize: 14 }}
+              />
             </Col>
             <Col span={24}>
               <div
@@ -1638,7 +1778,7 @@ export function Popup(): React.ReactElement {
                 }}
               >
                 <Text type="secondary" style={{ fontSize: 12 }}>
-                  加入电报社区一起讨论Alpha刷分心得:
+                  {t('stats.joinTelegram')}
                 </Text>
                 <Link href="https://t.me/ddddao2025" target="_blank" rel="noopener noreferrer">
                   <img
@@ -1658,9 +1798,9 @@ export function Popup(): React.ReactElement {
         title={
           <Space>
             <BellOutlined style={{ color: '#ff4d4f' }} />
-            <span>空投提醒</span>
+            <span>{t('airdrop.title')}</span>
             <Text type="secondary" style={{ fontSize: 11 }}>
-              (每30分钟自动更新)
+              {t('airdrop.autoUpdate')}
             </Text>
           </Space>
         }
@@ -1687,13 +1827,13 @@ export function Popup(): React.ReactElement {
             }}
             disabled={airdropLoading}
           >
-            刷新
+            {t('controls.refresh')}
           </Button>
         }
       >
         {airdropLoading ? (
           <Text type="secondary" style={{ fontSize: 12 }}>
-            加载中...
+            {t('airdrop.loading')}
           </Text>
         ) : (
           <Space direction="vertical" size="middle" style={{ width: '100%' }}>
@@ -1704,7 +1844,7 @@ export function Popup(): React.ReactElement {
                   strong
                   style={{ fontSize: 13, color: '#ff4d4f', marginBottom: 8, display: 'block' }}
                 >
-                  今日空投
+                  {t('airdrop.today')}
                 </Text>
                 <List
                   size="small"
@@ -1738,7 +1878,9 @@ export function Popup(): React.ReactElement {
                               )}
                               <Text strong style={{ fontSize: 13, color: '#1890ff' }}>
                                 {displaySymbol}
-                                {item.phase && item.phase > 1 && ` 阶段${item.phase}`}
+                                {item.phase &&
+                                  item.phase > 1 &&
+                                  ` ${t('airdrop.phase')}${item.phase}`}
                               </Text>
                               {item.name && item.name !== item.symbol && (
                                 <Text type="secondary" style={{ fontSize: 12 }}>
@@ -1747,12 +1889,12 @@ export function Popup(): React.ReactElement {
                               )}
                               {item.type === 'tge' && (
                                 <Tag color="purple" style={{ fontSize: 10, margin: 0 }}>
-                                  TGE
+                                  {t('airdrop.tge')}
                                 </Tag>
                               )}
                               {item.type === 'grab' && (
                                 <Tag color="orange" style={{ fontSize: 10, margin: 0 }}>
-                                  秒杀
+                                  {t('airdrop.grab')}
                                 </Tag>
                               )}
                               {item.completed && (
@@ -1766,8 +1908,12 @@ export function Popup(): React.ReactElement {
                             </Tag>
                           </Space>
                           <Space size="middle" style={{ fontSize: 11, color: '#666' }}>
-                            <span>空投数量: {item.quantity}</span>
-                            <span>积分门槛: {item.threshold}</span>
+                            <span>
+                              {t('airdrop.quantity')}: {item.quantity}
+                            </span>
+                            <span>
+                              {t('airdrop.threshold')}: {item.threshold}
+                            </span>
                             {item.estimatedValue && (
                               <Text type="success" style={{ fontSize: 11 }}>
                                 ≈{item.estimatedValue}
@@ -1789,7 +1935,7 @@ export function Popup(): React.ReactElement {
                   strong
                   style={{ fontSize: 13, color: '#1890ff', marginBottom: 8, display: 'block' }}
                 >
-                  空投预告
+                  {t('airdrop.forecast')}
                 </Text>
                 <List
                   size="small"
@@ -1823,7 +1969,9 @@ export function Popup(): React.ReactElement {
                               )}
                               <Text strong style={{ fontSize: 13, color: '#1890ff' }}>
                                 {displaySymbol}
-                                {item.phase && item.phase > 1 && ` 阶段${item.phase}`}
+                                {item.phase &&
+                                  item.phase > 1 &&
+                                  ` ${t('airdrop.phase')}${item.phase}`}
                               </Text>
                               {item.name && item.name !== item.symbol && (
                                 <Text type="secondary" style={{ fontSize: 12 }}>
@@ -1832,12 +1980,12 @@ export function Popup(): React.ReactElement {
                               )}
                               {item.type === 'tge' && (
                                 <Tag color="purple" style={{ fontSize: 10, margin: 0 }}>
-                                  TGE
+                                  {t('airdrop.tge')}
                                 </Tag>
                               )}
                               {item.type === 'grab' && (
                                 <Tag color="orange" style={{ fontSize: 10, margin: 0 }}>
-                                  秒杀
+                                  {t('airdrop.grab')}
                                 </Tag>
                               )}
                             </Space>
@@ -1846,8 +1994,12 @@ export function Popup(): React.ReactElement {
                             </Tag>
                           </Space>
                           <Space size="middle" style={{ fontSize: 11, color: '#666' }}>
-                            <span>空投数量: {item.quantity}</span>
-                            <span>积分门槛: {item.threshold}</span>
+                            <span>
+                              {t('airdrop.quantity')}: {item.quantity}
+                            </span>
+                            <span>
+                              {t('airdrop.threshold')}: {item.threshold}
+                            </span>
                             {item.estimatedValue && (
                               <Text type="success" style={{ fontSize: 11 }}>
                                 ≈{item.estimatedValue}
@@ -1865,7 +2017,7 @@ export function Popup(): React.ReactElement {
             {/* 无数据提示 */}
             {airdropToday.length === 0 && airdropForecast.length === 0 && (
               <Text type="secondary" style={{ fontSize: 12 }}>
-                暂无空投信息
+                {t('airdrop.noData')}
               </Text>
             )}
           </Space>
@@ -1873,21 +2025,13 @@ export function Popup(): React.ReactElement {
       </Card>
 
       <div style={{ textAlign: 'center', marginTop: 16 }}>
-        <Link
-          href="https://web3.binance.com/referral?ref=DDDDEXE"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          币安钱包绑定邀请码，手续费9折
+        <Link href={t('footer.binanceWalletUrl')} target="_blank" rel="noopener noreferrer">
+          {t('footer.binanceWallet')}
         </Link>
       </div>
       <div style={{ textAlign: 'center', marginTop: 16 }}>
-        <Link
-          href="https://www.binance.com/join?ref=DDDDEXE"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          注册币安，手续费8折
+        <Link href={t('footer.registerBinanceUrl')} target="_blank" rel="noopener noreferrer">
+          {t('footer.registerBinance')}
         </Link>
       </div>
 
@@ -1903,7 +2047,7 @@ export function Popup(): React.ReactElement {
           gap: '4px',
         }}
       >
-        <span>Made with ❤️ by</span>
+        <span>{t('footer.madeBy')}</span>
         <Link href="https://t.me/ddddao2025" target="_blank" rel="noopener noreferrer">
           <img
             src={LOGO_WITH_NAME_URL}

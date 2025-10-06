@@ -17,6 +17,7 @@ import {
   Col,
   InputNumber,
   List,
+  Radio,
   Row,
   Space,
   Statistic,
@@ -37,7 +38,7 @@ import type {
 } from '../lib/messages.js';
 import { postRuntimeMessage } from '../lib/messages.js';
 import { buildOrderHistoryUrl, summarizeOrderHistoryData } from '../lib/orderHistory.js';
-import type { SchedulerState } from '../lib/storage';
+import type { PriceOffsetMode, SchedulerState } from '../lib/storage';
 
 const { Text, Link, Title } = Typography;
 const GITHUB_REPO_URL = 'https://github.com/DDDDAO/DDDD-Alpha-Extension';
@@ -197,7 +198,9 @@ export function Popup(): React.ReactElement {
   });
   const [controlsBusy, setControlsBusy] = useState(false);
   const [resettingInitialBalance, setResettingInitialBalance] = useState(false);
-  const [localPriceOffset, setLocalPriceOffset] = useState('0.01');
+  const [priceOffsetMode, setPriceOffsetMode] = useState<PriceOffsetMode>('sideways');
+  const [buyPriceOffset, setBuyPriceOffset] = useState('0.01');
+  const [sellPriceOffset, setSellPriceOffset] = useState('0.01');
   const [localPointsFactor, setLocalPointsFactor] = useState('1');
   const [localPointsTarget, setLocalPointsTarget] = useState('15');
   const [stableCoins, setStableCoins] = useState<StabilityItem[]>([]);
@@ -207,7 +210,6 @@ export function Popup(): React.ReactElement {
   const [airdropLoading, setAirdropLoading] = useState(false);
   const [orderHistoryError, setOrderHistoryError] = useState<string | null>(null);
 
-  const isEditingPriceOffset = useRef(false);
   const isEditingPointsFactor = useRef(false);
   const isEditingPointsTarget = useRef(false);
   const orderHistoryRequestState = useRef<{
@@ -218,7 +220,6 @@ export function Popup(): React.ReactElement {
     status: 'idle',
   });
 
-  const spreadId = useId();
   const pointsFactorId = useId();
   const pointsTargetId = useId();
 
@@ -725,6 +726,9 @@ export function Popup(): React.ReactElement {
   const persistSchedulerSettings = useCallback(
     async (settingsPatch: {
       priceOffsetPercent?: number;
+      priceOffsetMode?: PriceOffsetMode;
+      buyPriceOffset?: number;
+      sellPriceOffset?: number;
       pointsFactor?: number;
       pointsTarget?: number;
     }): Promise<void> => {
@@ -733,6 +737,9 @@ export function Popup(): React.ReactElement {
         isEnabled: false,
         settings: {
           priceOffsetPercent: DEFAULT_PRICE_OFFSET_PERCENT,
+          priceOffsetMode: 'sideways' as PriceOffsetMode,
+          buyPriceOffset: 0.01,
+          sellPriceOffset: 0.01,
           tokenAddress: BUILTIN_DEFAULT_TOKEN_ADDRESS,
           pointsFactor: DEFAULT_POINTS_FACTOR,
           pointsTarget: DEFAULT_POINTS_TARGET,
@@ -741,6 +748,9 @@ export function Popup(): React.ReactElement {
 
       const baseSettings = baseState.settings ?? {
         priceOffsetPercent: DEFAULT_PRICE_OFFSET_PERCENT,
+        priceOffsetMode: 'sideways' as PriceOffsetMode,
+        buyPriceOffset: 0.01,
+        sellPriceOffset: 0.01,
         tokenAddress: BUILTIN_DEFAULT_TOKEN_ADDRESS,
         pointsFactor: DEFAULT_POINTS_FACTOR,
         pointsTarget: DEFAULT_POINTS_TARGET,
@@ -750,6 +760,9 @@ export function Popup(): React.ReactElement {
         ...baseState,
         settings: {
           priceOffsetPercent: baseSettings.priceOffsetPercent,
+          priceOffsetMode: baseSettings.priceOffsetMode,
+          buyPriceOffset: baseSettings.buyPriceOffset,
+          sellPriceOffset: baseSettings.sellPriceOffset,
           tokenAddress: baseSettings.tokenAddress,
           pointsFactor: baseSettings.pointsFactor,
           pointsTarget: baseSettings.pointsTarget,
@@ -834,13 +847,15 @@ export function Popup(): React.ReactElement {
 
   // Sync local input values with state, but not during active editing
   useEffect(() => {
-    const offset = getPriceOffsetPercent(state);
+    const mode = state?.settings?.priceOffsetMode ?? 'sideways';
+    const buyOffset = state?.settings?.buyPriceOffset ?? 0.01;
+    const sellOffset = state?.settings?.sellPriceOffset ?? 0.01;
     const factor = getPointsFactor(state);
     const target = getPointsTarget(state);
 
-    if (!isEditingPriceOffset.current) {
-      setLocalPriceOffset(formatSpreadInputValue(offset));
-    }
+    setPriceOffsetMode(mode);
+    setBuyPriceOffset(formatSpreadInputValue(buyOffset));
+    setSellPriceOffset(formatSpreadInputValue(sellOffset));
 
     if (isPointsFactorLocked && sanitizedPointsFactorLockValue !== null) {
       setLocalPointsFactor(String(sanitizedPointsFactorLockValue));
@@ -910,24 +925,6 @@ export function Popup(): React.ReactElement {
 
   async function handleStop(): Promise<void> {
     await handleControlMessage('CONTROL_STOP');
-  }
-
-  async function handlePriceOffsetChange(value: string): Promise<void> {
-    isEditingPriceOffset.current = false;
-    const rawValue = Number.parseFloat(value);
-    if (Number.isNaN(rawValue)) {
-      return;
-    }
-
-    const sanitizedValue = clampPriceOffsetPercent(rawValue);
-    setLocalPriceOffset(formatSpreadInputValue(sanitizedValue));
-
-    const currentValue = getPriceOffsetPercent(state);
-    if (!spreadValuesDiffer(currentValue, sanitizedValue)) {
-      return;
-    }
-
-    await persistSchedulerSettings({ priceOffsetPercent: sanitizedValue });
   }
 
   async function handlePointsFactorChange(value: string): Promise<void> {
@@ -1281,28 +1278,86 @@ export function Popup(): React.ReactElement {
       <Card title="设置" size="small" style={{ marginBottom: 16 }}>
         <Space direction="vertical" size="middle" style={{ width: '100%' }}>
           <div>
-            <Space size={6}>
-              <Text type="secondary">价格偏移 (%)</Text>
-              <Tooltip title="工具会自动实时刷新平均价格，并以价格偏移这个设置进行下单。默认值是万分之一，意思是会以比平均价格高万一的价格挂买单，比平均价格低万一的价格挂卖单，大部分币种这样都可以更快成交。如果把价格偏移设置成0，那么会以平均价格同时挂买单和卖单，这样的价差是最小的，但是有不成交的风险。推荐在价格稳定的时候以万1或者万0.5的价格偏移进行下单。">
+            <Space size={6} style={{ marginBottom: 8 }}>
+              <Text type="secondary">买卖价差设置</Text>
+              <Tooltip title="上涨模式：买入更激进（可负价差），卖出价差更低；横盘模式：万1价差挂单；自定义：手动设置买入和卖出价差">
                 <InfoCircleOutlined style={{ color: '#1677ff' }} />
               </Tooltip>
             </Space>
-            <InputNumber
-              id={spreadId}
-              min={0}
-              max={5}
-              step={0.001}
-              placeholder="0.01"
-              value={Number.parseFloat(localPriceOffset)}
-              onChange={(value) => {
-                isEditingPriceOffset.current = true;
-                setLocalPriceOffset(String(value ?? 0.01));
+            <Radio.Group
+              value={priceOffsetMode}
+              onChange={(e) => {
+                const mode = e.target.value as PriceOffsetMode;
+                setPriceOffsetMode(mode);
+                let buyOffset = 0.01;
+                let sellOffset = 0.01;
+                if (mode === 'sideways') {
+                  buyOffset = 0.01;
+                  sellOffset = 0.01;
+                } else if (mode === 'bullish') {
+                  buyOffset = -0.02;
+                  sellOffset = 0.005;
+                }
+                setBuyPriceOffset(String(buyOffset));
+                setSellPriceOffset(String(sellOffset));
+                void persistSchedulerSettings({
+                  priceOffsetMode: mode,
+                  buyPriceOffset: buyOffset,
+                  sellPriceOffset: sellOffset,
+                });
               }}
-              onBlur={(e) => void handlePriceOffsetChange(e.target.value)}
               disabled={controlsBusy}
-              title="调整限价订单与 VWAP 的偏离距离"
-              style={{ width: '100%' }}
-            />
+              style={{ width: '100%', marginBottom: 12 }}
+            >
+              <Radio value="bullish">上涨模式</Radio>
+              <Radio value="sideways">横盘模式</Radio>
+              <Radio value="custom">自定义</Radio>
+            </Radio.Group>
+
+            {priceOffsetMode === 'custom' && (
+              <Space direction="vertical" size="small" style={{ width: '100%' }}>
+                <div>
+                  <Text type="secondary" style={{ fontSize: 12 }}>
+                    买入价差 (%)
+                  </Text>
+                  <InputNumber
+                    min={-5}
+                    max={5}
+                    step={0.001}
+                    placeholder="0.01"
+                    value={Number.parseFloat(buyPriceOffset)}
+                    onChange={(value) => setBuyPriceOffset(String(value ?? 0.01))}
+                    onBlur={() => {
+                      void persistSchedulerSettings({
+                        buyPriceOffset: Number.parseFloat(buyPriceOffset),
+                      });
+                    }}
+                    disabled={controlsBusy}
+                    style={{ width: '100%' }}
+                  />
+                </div>
+                <div>
+                  <Text type="secondary" style={{ fontSize: 12 }}>
+                    卖出价差 (%)
+                  </Text>
+                  <InputNumber
+                    min={-5}
+                    max={5}
+                    step={0.001}
+                    placeholder="0.01"
+                    value={Number.parseFloat(sellPriceOffset)}
+                    onChange={(value) => setSellPriceOffset(String(value ?? 0.01))}
+                    onBlur={() => {
+                      void persistSchedulerSettings({
+                        sellPriceOffset: Number.parseFloat(sellPriceOffset),
+                      });
+                    }}
+                    disabled={controlsBusy}
+                    style={{ width: '100%' }}
+                  />
+                </div>
+              </Space>
+            )}
           </div>
 
           <div>
@@ -1908,12 +1963,6 @@ function getTokenAddress(state: SchedulerState | null): string {
   return candidate ?? BUILTIN_DEFAULT_TOKEN_ADDRESS;
 }
 
-function getPriceOffsetPercent(state: SchedulerState | null): number {
-  const raw = state?.settings?.priceOffsetPercent;
-  const numeric = typeof raw === 'number' ? raw : Number(raw);
-  return Number.isFinite(numeric) ? clampPriceOffsetPercent(numeric) : DEFAULT_PRICE_OFFSET_PERCENT;
-}
-
 function getPointsFactor(state: SchedulerState | null): number {
   const raw = state?.settings?.pointsFactor;
   const numeric = typeof raw === 'number' ? raw : Number(raw);
@@ -1924,14 +1973,6 @@ function getPointsTarget(state: SchedulerState | null): number {
   const raw = state?.settings?.pointsTarget;
   const numeric = typeof raw === 'number' ? raw : Number(raw);
   return Number.isFinite(numeric) ? clampPointsTarget(numeric) : DEFAULT_POINTS_TARGET;
-}
-
-function clampPriceOffsetPercent(value: number): number {
-  if (!Number.isFinite(value)) {
-    return DEFAULT_PRICE_OFFSET_PERCENT;
-  }
-  const clamped = Math.min(Math.max(value, 0), 5);
-  return Number(clamped.toFixed(6));
 }
 
 function clampPointsFactor(value: number): number {
@@ -1957,13 +1998,6 @@ function formatSpreadInputValue(value: number): string {
   const fixed = value.toFixed(3);
   const trimmed = fixed.replace(/\.0+$/u, '').replace(/0+$/u, '').replace(/\.$/u, '');
   return trimmed.length > 0 ? trimmed : '0';
-}
-
-function spreadValuesDiffer(a: number, b: number): boolean {
-  if (!Number.isFinite(a) || !Number.isFinite(b)) {
-    return true;
-  }
-  return Math.abs(a - b) > 1e-6;
 }
 
 function pointsFactorValuesDiffer(a: number, b: number): boolean {

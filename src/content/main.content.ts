@@ -275,6 +275,8 @@ let runtimeUnavailable = false;
 let automationEnabled = false;
 let automationStateWatcherInitialized = false;
 let priceOffsetPercent = DEFAULT_PRICE_OFFSET_PERCENT;
+let buyPriceOffset = DEFAULT_PRICE_OFFSET_PERCENT;
+let sellPriceOffset = DEFAULT_PRICE_OFFSET_PERCENT;
 let pointsFactor = DEFAULT_POINTS_FACTOR;
 let pointsTarget = DEFAULT_POINTS_TARGET;
 
@@ -650,6 +652,8 @@ async function executePrimaryTask(
       orderResult = await ensureLimitOrderPlaced({
         price: averagePrice,
         priceOffsetPercent,
+        buyPriceOffset,
+        sellPriceOffset,
       });
       // eslint-disable-next-line no-console
       console.log('[dddd-alpah-extension] Order result:', orderResult.status, orderResult.reason);
@@ -876,6 +880,8 @@ interface OrderPlacementResult {
 async function ensureLimitOrderPlaced(params: {
   price: number;
   priceOffsetPercent: number;
+  buyPriceOffset: number;
+  sellPriceOffset: number;
 }): Promise<OrderPlacementResult> {
   // eslint-disable-next-line no-console
   console.log('[dddd-alpah-extension] ensureLimitOrderPlaced started');
@@ -938,6 +944,8 @@ async function ensureLimitOrderPlaced(params: {
   const buyVolume = await configureLimitOrder({
     price: params.price,
     priceOffsetPercent: params.priceOffsetPercent,
+    buyPriceOffset: params.buyPriceOffset,
+    sellPriceOffset: params.sellPriceOffset,
     availableUsdt,
     orderPanel,
   });
@@ -1098,6 +1106,8 @@ function initializeAutomationStateWatcher(): void {
 function applyAutomationState(value: unknown): void {
   let nextEnabled = false;
   let nextPriceOffset = DEFAULT_PRICE_OFFSET_PERCENT;
+  let nextBuyPriceOffset = DEFAULT_PRICE_OFFSET_PERCENT;
+  let nextSellPriceOffset = DEFAULT_PRICE_OFFSET_PERCENT;
   let nextPointsFactor = DEFAULT_POINTS_FACTOR;
   let nextPointsTarget = DEFAULT_POINTS_TARGET;
 
@@ -1108,6 +1118,13 @@ function applyAutomationState(value: unknown): void {
     if (record.settings && typeof record.settings === 'object') {
       const candidate = (record.settings as { priceOffsetPercent?: unknown }).priceOffsetPercent;
       nextPriceOffset = extractPriceOffsetPercent(candidate);
+
+      const buyOffsetCandidate = (record.settings as { buyPriceOffset?: unknown }).buyPriceOffset;
+      nextBuyPriceOffset = extractPriceOffsetPercent(buyOffsetCandidate);
+
+      const sellOffsetCandidate = (record.settings as { sellPriceOffset?: unknown })
+        .sellPriceOffset;
+      nextSellPriceOffset = extractPriceOffsetPercent(sellOffsetCandidate);
 
       const factorCandidate = (record.settings as { pointsFactor?: unknown }).pointsFactor;
       nextPointsFactor = extractPointsFactor(factorCandidate);
@@ -1120,6 +1137,8 @@ function applyAutomationState(value: unknown): void {
   const stateChanged =
     automationEnabled !== nextEnabled ||
     priceOffsetPercent !== nextPriceOffset ||
+    buyPriceOffset !== nextBuyPriceOffset ||
+    sellPriceOffset !== nextSellPriceOffset ||
     pointsFactor !== nextPointsFactor ||
     pointsTarget !== nextPointsTarget;
 
@@ -1128,6 +1147,8 @@ function applyAutomationState(value: unknown): void {
     console.log('[dddd-alpah-extension] Automation state updated:', {
       enabled: nextEnabled,
       priceOffsetPercent: nextPriceOffset,
+      buyPriceOffset: nextBuyPriceOffset,
+      sellPriceOffset: nextSellPriceOffset,
       pointsFactor: nextPointsFactor,
       pointsTarget: nextPointsTarget,
     });
@@ -1135,6 +1156,8 @@ function applyAutomationState(value: unknown): void {
 
   automationEnabled = nextEnabled;
   priceOffsetPercent = nextPriceOffset;
+  buyPriceOffset = nextBuyPriceOffset;
+  sellPriceOffset = nextSellPriceOffset;
   pointsFactor = nextPointsFactor;
   pointsTarget = nextPointsTarget;
 
@@ -1268,15 +1291,19 @@ async function refreshAutomationState(): Promise<void> {
 async function configureLimitOrder(params: {
   price: number;
   priceOffsetPercent: number;
+  buyPriceOffset: number;
+  sellPriceOffset: number;
   availableUsdt: number;
   orderPanel: HTMLElement;
 }): Promise<number> {
-  const { price, priceOffsetPercent, availableUsdt, orderPanel } = params;
+  const { price, buyPriceOffset, sellPriceOffset, availableUsdt, orderPanel } = params;
 
-  const clampedOffsetPercent = clampPriceOffsetPercent(priceOffsetPercent);
-  const offsetFactor = clampedOffsetPercent / 100;
-  const buyPrice = price * (1 + offsetFactor);
-  const reversePriceBase = price * (1 - offsetFactor);
+  const clampedBuyOffset = clampPriceOffsetPercent(buyPriceOffset);
+  const clampedSellOffset = clampPriceOffsetPercent(sellPriceOffset);
+  const buyOffsetFactor = clampedBuyOffset / 100;
+  const sellOffsetFactor = clampedSellOffset / 100;
+  const buyPrice = price * (1 + buyOffsetFactor);
+  const reversePriceBase = price * (1 - sellOffsetFactor);
   const reversePrice = reversePriceBase > 0 ? reversePriceBase : 0;
   const buyPriceValue = formatNumberFixedDecimals(buyPrice, 8);
   const reversePriceValue = formatNumberFixedDecimals(reversePrice, 8);
@@ -1284,7 +1311,8 @@ async function configureLimitOrder(params: {
   // eslint-disable-next-line no-console
   console.log('[dddd-alpah-extension] Configuring order:', {
     basePrice: price,
-    offsetPercent: clampedOffsetPercent,
+    buyOffsetPercent: clampedBuyOffset,
+    sellOffsetPercent: clampedSellOffset,
     buyPrice: buyPriceValue,
     reversePrice: reversePriceValue,
     availableUsdt,

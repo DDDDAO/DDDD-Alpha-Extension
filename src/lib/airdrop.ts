@@ -3,8 +3,8 @@ export interface AirdropApiItem {
   name?: string;
   date?: string;
   time?: string;
-  points?: string;
-  amount?: string;
+  points?: string | number;
+  amount?: string | number;
   status?: string;
   chain_id?: string;
   contract_address?: string;
@@ -64,6 +64,7 @@ interface LocalDateInfo {
   time: string;
   dateTime: Date;
   usedFallbackTime: boolean;
+  utcDate: string;
 }
 
 function formatLocalDate(date: Date): string {
@@ -73,12 +74,17 @@ function formatLocalDate(date: Date): string {
   return `${year}-${month}-${day}`;
 }
 
-function sanitizeText(value?: string | null): string | undefined {
+function sanitizeText(value?: string | number | null): string | undefined {
+  // 处理 number 类型，转换为 string
+  if (typeof value === 'number') {
+    return value.toString();
+  }
+  // 处理 string 类型
   const trimmed = value?.trim();
   return trimmed && trimmed.length > 0 ? trimmed : undefined;
 }
 
-function withDash(value?: string | null): string {
+function withDash(value?: string | number | null): string {
   const sanitized = sanitizeText(value);
   return sanitized ?? '-';
 }
@@ -109,6 +115,10 @@ function normalizeTimeString(time?: string | null): string | null {
 function convertBeijingToLocal(
   dateStr?: string | null,
   timeStr?: string | null,
+  options?: {
+    phase?: number;
+    fallbackTime?: string;
+  },
 ): LocalDateInfo | null {
   const sanitizedDate = sanitizeText(dateStr);
   if (!sanitizedDate) {
@@ -117,7 +127,12 @@ function convertBeijingToLocal(
 
   const normalizedTime = normalizeTimeString(timeStr);
   const usedFallbackTime = !normalizedTime;
-  const timeForParse = normalizedTime ?? '14:00';
+  const fallbackTime = normalizeTimeString(options?.fallbackTime ?? '14:00');
+  const timeForParse = normalizedTime ?? fallbackTime;
+
+  if (!timeForParse) {
+    return null;
+  }
 
   const isoCandidate = `${sanitizedDate}T${timeForParse.length === 5 ? timeForParse : `${timeForParse}:00`}`;
   const dateTime = new Date(`${isoCandidate}+08:00`);
@@ -126,37 +141,44 @@ function convertBeijingToLocal(
     return null;
   }
 
+  let adjustedDateTime = dateTime;
+
+  if (options?.phase === 2 && !usedFallbackTime) {
+    adjustedDateTime = new Date(dateTime.getTime() + 18 * 60 * 60 * 1000);
+  }
+
   return {
-    date: formatLocalDate(dateTime),
-    time: `${dateTime.getHours().toString().padStart(2, '0')}:${dateTime
+    date: formatLocalDate(adjustedDateTime),
+    time: `${adjustedDateTime.getHours().toString().padStart(2, '0')}:${adjustedDateTime
       .getMinutes()
       .toString()
       .padStart(2, '0')}`,
-    dateTime,
+    dateTime: adjustedDateTime,
     usedFallbackTime,
+    utcDate: adjustedDateTime.toISOString().split('T')[0],
   };
 }
 
 function determineBucket(
-  categoryDate: string | null,
+  categoryUtcDate: string | null,
   airdrop: AirdropApiItem,
-  todayStr: string,
-  tomorrowStr: string,
+  beijingToday: string,
+  beijingTomorrow: string,
 ): Bucket | null {
-  if (categoryDate) {
-    if (categoryDate === todayStr) {
-      return 'today';
-    }
-    if (categoryDate === tomorrowStr) {
-      return 'tomorrow';
-    }
-    if (categoryDate > todayStr) {
-      return 'future';
-    }
-    // 过滤掉日期早于今天的空投
-    if (categoryDate < todayStr) {
+  if (categoryUtcDate) {
+    if (categoryUtcDate < beijingToday) {
       return null;
     }
+    if (categoryUtcDate === beijingToday) {
+      return 'today';
+    }
+    if (categoryUtcDate === beijingTomorrow) {
+      return 'tomorrow';
+    }
+    if (categoryUtcDate > beijingToday) {
+      return 'future';
+    }
+    return null;
   }
 
   const status = sanitizeText(airdrop.status)?.toLowerCase();
@@ -249,18 +271,22 @@ function buildDisplayTime(
 }
 
 function computeSortKey(info: LocalDateInfo | null, airdrop: AirdropApiItem): number {
-  const candidates: number[] = [];
-
+  // 【修复排序】优先使用实际空投时间，而非创建/更新时间
+  // 1. 优先：实际空投时间（包含具体时分）
   if (info?.dateTime) {
-    candidates.push(info.dateTime.getTime());
+    return info.dateTime.getTime();
   }
 
+  // 2. 次选：日期字段（至少有日期信息）
   if (airdrop.date) {
     const beijingDate = new Date(`${airdrop.date}T00:00:00+08:00`);
     if (!Number.isNaN(beijingDate.getTime())) {
-      candidates.push(beijingDate.getTime());
+      return beijingDate.getTime();
     }
   }
+
+  // 3. 最后：使用系统时间戳（创建/更新时间）
+  const candidates: number[] = [];
 
   if (typeof airdrop.system_timestamp === 'number') {
     candidates.push(airdrop.system_timestamp * 1000);
@@ -283,10 +309,11 @@ function computeSortKey(info: LocalDateInfo | null, airdrop: AirdropApiItem): nu
 
 export function processAirdropApiResponse(apiData: AirdropApiResponse | null): AirdropData {
   const now = new Date();
-  const todayStr = formatLocalDate(now);
-  const tomorrow = new Date(now);
-  tomorrow.setDate(tomorrow.getDate() + 1);
-  const tomorrowStr = formatLocalDate(tomorrow);
+  const beijingOffsetMs = 8 * 60 * 60 * 1000;
+  const beijingToday = new Date(now.getTime() + beijingOffsetMs).toISOString().split('T')[0];
+  const beijingTomorrow = new Date(now.getTime() + beijingOffsetMs + 24 * 60 * 60 * 1000)
+    .toISOString()
+    .split('T')[0];
 
   if (!apiData?.airdrops || !Array.isArray(apiData.airdrops)) {
     return { today: [], forecast: [], timestamp: Date.now() };
@@ -295,14 +322,42 @@ export function processAirdropApiResponse(apiData: AirdropApiResponse | null): A
   const todayEntries: Array<{ item: ProcessedAirdrop; sortKey: number }> = [];
   const forecastEntries: Array<{ item: ProcessedAirdrop; sortKey: number }> = [];
 
+  // 当前时间戳(秒)
+  const nowTimestamp = Math.floor(Date.now() / 1000);
+
   apiData.airdrops.forEach((airdrop) => {
     if (!airdrop?.token) {
       return;
     }
 
-    const localInfo = convertBeijingToLocal(airdrop.date, airdrop.time);
+    const localInfo = convertBeijingToLocal(airdrop.date, airdrop.time, {
+      phase: airdrop.phase,
+      fallbackTime: '14:00',
+    });
+
     const categoryDate = localInfo?.date ?? sanitizeText(airdrop.date) ?? null;
-    const bucket = determineBucket(categoryDate, airdrop, todayStr, tomorrowStr);
+    const categoryUtcDate =
+      localInfo?.utcDate ??
+      (() => {
+        const sanitizedDate = sanitizeText(airdrop.date);
+        if (!sanitizedDate) {
+          return null;
+        }
+        const beijingDate = new Date(`${sanitizedDate}T00:00:00+08:00`);
+        return Number.isNaN(beijingDate.getTime()) ? null : beijingDate.toISOString().split('T')[0];
+      })();
+
+    // 【复刻】过期判断逻辑：空投时间+24小时后标记为completed
+    let isExpired = airdrop.completed ?? false;
+    if (localInfo?.dateTime && !isExpired) {
+      const expireTime = new Date(localInfo.dateTime.getTime() + 86400000); // +24小时
+      const expireTimestamp = Math.floor(expireTime.getTime() / 1000);
+      if (nowTimestamp > expireTimestamp) {
+        isExpired = true;
+      }
+    }
+
+    const bucket = determineBucket(categoryUtcDate, airdrop, beijingToday, beijingTomorrow);
 
     if (!bucket) {
       return;
@@ -341,7 +396,7 @@ export function processAirdropApiResponse(apiData: AirdropApiResponse | null): A
       status: airdrop.status,
       phase: airdrop.phase,
       type: airdrop.type,
-      completed: airdrop.completed,
+      completed: isExpired, // 使用计算后的过期状态
     };
 
     const sortKey = computeSortKey(localInfo, airdrop);

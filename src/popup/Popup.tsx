@@ -552,6 +552,7 @@ export function Popup(): React.ReactElement {
     }
   }, [requestCurrentBalanceFromTab, requestTokenSymbolFromTab]);
 
+  // 首次获取平均价格
   useEffect(() => {
     if (hasRequestedAveragePrice.current) {
       return;
@@ -569,6 +570,29 @@ export function Popup(): React.ReactElement {
         hasRequestedAveragePrice.current = false;
       }
     });
+  }, [activeTab.isSupported, activeTab.tabId]);
+
+  // 定时刷新平均价格（每10秒）
+  useEffect(() => {
+    if (!activeTab.isSupported || typeof activeTab.tabId !== 'number') {
+      return;
+    }
+
+    const tabId = activeTab.tabId;
+
+    const refreshPrice = () => {
+      chrome.tabs.sendMessage(tabId, { type: 'RUN_TASK_ONCE' }, () => {
+        if (chrome.runtime.lastError) {
+          console.warn('Failed to refresh price:', chrome.runtime.lastError.message);
+        }
+      });
+    };
+
+    const intervalId = window.setInterval(refreshPrice, 10000); // 每10秒刷新一次
+
+    return () => {
+      window.clearInterval(intervalId);
+    };
   }, [activeTab.isSupported, activeTab.tabId]);
 
   useEffect(() => {
@@ -1404,6 +1428,37 @@ export function Popup(): React.ReactElement {
                   {t('token.multiplier')}
                 </Text>
               )}
+              {snapshot?.averagePrice && (
+                <div
+                  style={{
+                    marginTop: 8,
+                    padding: '8px 12px',
+                    background: '#f0f5ff',
+                    borderRadius: 4,
+                    border: '1px solid #adc6ff',
+                  }}
+                >
+                  <Space direction="vertical" size={2} style={{ width: '100%' }}>
+                    <Space size={6} align="center">
+                      <DollarOutlined style={{ color: '#1890ff', fontSize: 14 }} />
+                      <Text type="secondary" style={{ fontSize: 11 }}>
+                        {t('stats.averagePrice')}
+                      </Text>
+                    </Space>
+                    <Text strong style={{ fontSize: 16, color: '#1890ff' }}>
+                      {formatNumber(snapshot.averagePrice, {
+                        minimumFractionDigits: 4,
+                        maximumFractionDigits: 8,
+                      })}
+                    </Text>
+                    {snapshot.timestamp && (
+                      <Text type="secondary" style={{ fontSize: 10 }}>
+                        {new Date(snapshot.timestamp).toLocaleTimeString(i18n.language)}
+                      </Text>
+                    )}
+                  </Space>
+                </div>
+              )}
             </Space>
           </Card>
         </Space>
@@ -1429,8 +1484,8 @@ export function Popup(): React.ReactElement {
                   buyOffset = 0.01;
                   sellOffset = 0.01;
                 } else if (mode === 'bullish') {
-                  buyOffset = -0.02;
-                  sellOffset = 0.005;
+                  buyOffset = 0.01;
+                  sellOffset = -0.01;
                 }
                 setBuyPriceOffset(String(buyOffset));
                 setSellPriceOffset(String(sellOffset));
@@ -1443,9 +1498,25 @@ export function Popup(): React.ReactElement {
               disabled={controlsBusy}
               style={{ width: '100%', marginBottom: 12 }}
             >
-              <Radio value="bullish">上涨模式</Radio>
-              <Radio value="sideways">横盘模式</Radio>
-              <Radio value="custom">自定义</Radio>
+              <Space direction="vertical" size="small" style={{ width: '100%' }}>
+                <Radio value="bullish">
+                  <Space size={6}>
+                    <span>上涨模式</span>
+                    <Text type="secondary" style={{ fontSize: 11 }}>
+                      (买入: +0.01%, 卖出: -0.01%)
+                    </Text>
+                  </Space>
+                </Radio>
+                <Radio value="sideways">
+                  <Space size={6}>
+                    <span>横盘模式</span>
+                    <Text type="secondary" style={{ fontSize: 11 }}>
+                      (买入: +0.01%, 卖出: +0.01%)
+                    </Text>
+                  </Space>
+                </Radio>
+                <Radio value="custom">自定义</Radio>
+              </Space>
             </Radio.Group>
 
             {priceOffsetMode === 'custom' && (

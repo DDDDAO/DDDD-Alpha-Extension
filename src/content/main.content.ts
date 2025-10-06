@@ -24,7 +24,7 @@ const LIMIT_STATE_POLL_INTERVAL_MS = 100;
 const MIN_AUTOMATION_DELAY_MS = 5_000;
 const MAX_AUTOMATION_DELAY_MS = 10_000;
 
-const MIN_PRICE_OFFSET_PERCENT = 0;
+const MIN_PRICE_OFFSET_PERCENT = -5;
 const MAX_PRICE_OFFSET_PERCENT = 5;
 
 function getCookieValue(name: string): string | null {
@@ -1333,7 +1333,7 @@ async function configureLimitOrder(params: {
   const buyOffsetFactor = clampedBuyOffset / 100;
   const sellOffsetFactor = clampedSellOffset / 100;
   const buyPrice = price * (1 + buyOffsetFactor);
-  const reversePriceBase = price * (1 - sellOffsetFactor);
+  const reversePriceBase = price * (1 + sellOffsetFactor);
   const reversePrice = reversePriceBase > 0 ? reversePriceBase : 0;
   const buyPriceValue = formatNumberFixedDecimals(buyPrice, 8);
   const reversePriceValue = formatNumberFixedDecimals(reversePrice, 8);

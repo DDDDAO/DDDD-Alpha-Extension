@@ -254,6 +254,7 @@ export function Popup(): React.ReactElement {
   const isEditingPointsTarget = useRef(false);
   const isEditingBuyPriceOffset = useRef(false);
   const isEditingSellPriceOffset = useRef(false);
+  const settingsUpdateQueueRef = useRef<Promise<void>>(Promise.resolve());
   const orderHistoryRequestState = useRef<{
     tabId: number | null;
     status: 'idle' | 'pending' | 'success';
@@ -847,7 +848,7 @@ export function Popup(): React.ReactElement {
   const isPointsFactorLocked = sanitizedPointsFactorLockValue !== null;
 
   const persistSchedulerSettings = useCallback(
-    async (settingsPatch: {
+    (settingsPatch: {
       priceOffsetPercent?: number;
       priceOffsetMode?: PriceOffsetMode;
       buyPriceOffset?: number;
@@ -855,71 +856,85 @@ export function Popup(): React.ReactElement {
       pointsFactor?: number;
       pointsTarget?: number;
     }): Promise<void> => {
-      let baseState = state;
+      const task = async (): Promise<void> => {
+        let baseState = state;
 
-      if (!baseState) {
-        const stored = await chrome.storage.local.get(STORAGE_KEY);
-        baseState = (stored[STORAGE_KEY] as SchedulerState | undefined) ?? {
-          isRunning: false,
-          isEnabled: false,
-          settings: {
+        if (!baseState) {
+          const stored = await chrome.storage.local.get(STORAGE_KEY);
+          baseState = (stored[STORAGE_KEY] as SchedulerState | undefined) ?? {
+            isRunning: false,
+            isEnabled: false,
+            settings: {
+              priceOffsetPercent: DEFAULT_PRICE_OFFSET_PERCENT,
+              priceOffsetMode: 'sideways' as PriceOffsetMode,
+              buyPriceOffset: 0.01,
+              sellPriceOffset: -0.01,
+              tokenAddress: BUILTIN_DEFAULT_TOKEN_ADDRESS,
+              pointsFactor: DEFAULT_POINTS_FACTOR,
+              pointsTarget: DEFAULT_POINTS_TARGET,
+            },
+            requiresLogin: false,
+          };
+        }
+
+        const normalizedBaseState: SchedulerState = {
+          isRunning: baseState.isRunning ?? false,
+          isEnabled: baseState.isEnabled ?? false,
+          settings: baseState.settings ?? {
             priceOffsetPercent: DEFAULT_PRICE_OFFSET_PERCENT,
+            priceOffsetMode: 'sideways' as PriceOffsetMode,
+            buyPriceOffset: 0.01,
+            sellPriceOffset: -0.01,
             tokenAddress: BUILTIN_DEFAULT_TOKEN_ADDRESS,
             pointsFactor: DEFAULT_POINTS_FACTOR,
             pointsTarget: DEFAULT_POINTS_TARGET,
           },
-          requiresLogin: false,
+          lastRun: baseState.lastRun,
+          lastError: baseState.lastError,
+          lastResult: baseState.lastResult,
+          tokenSymbol: baseState.tokenSymbol,
+          dailyBuyVolume: baseState.dailyBuyVolume,
+          requiresLogin: baseState.requiresLogin ?? false,
+          sessionStartedAt: baseState.sessionStartedAt,
+          sessionStoppedAt: baseState.sessionStoppedAt,
         };
-      }
 
-      const normalizedBaseState: SchedulerState = {
-        isRunning: baseState.isRunning ?? false,
-        isEnabled: baseState.isEnabled ?? false,
-        settings: baseState.settings ?? {
+        const baseSettings = {
           priceOffsetPercent: DEFAULT_PRICE_OFFSET_PERCENT,
           priceOffsetMode: 'sideways' as PriceOffsetMode,
           buyPriceOffset: 0.01,
-          sellPriceOffset: 0.01,
+          sellPriceOffset: -0.01,
           tokenAddress: BUILTIN_DEFAULT_TOKEN_ADDRESS,
           pointsFactor: DEFAULT_POINTS_FACTOR,
           pointsTarget: DEFAULT_POINTS_TARGET,
-        },
-        lastRun: baseState.lastRun,
-        lastError: baseState.lastError,
-        lastResult: baseState.lastResult,
-        tokenSymbol: baseState.tokenSymbol,
-        dailyBuyVolume: baseState.dailyBuyVolume,
-        requiresLogin: baseState.requiresLogin ?? false,
-        sessionStartedAt: baseState.sessionStartedAt,
-        sessionStoppedAt: baseState.sessionStoppedAt,
+          ...(normalizedBaseState.settings ?? {}),
+        };
+
+        const nextState = {
+          ...normalizedBaseState,
+          settings: {
+            priceOffsetPercent: baseSettings.priceOffsetPercent,
+            priceOffsetMode: baseSettings.priceOffsetMode,
+            buyPriceOffset: baseSettings.buyPriceOffset,
+            sellPriceOffset: baseSettings.sellPriceOffset,
+            tokenAddress: baseSettings.tokenAddress,
+            pointsFactor: baseSettings.pointsFactor,
+            pointsTarget: baseSettings.pointsTarget,
+            ...settingsPatch,
+          },
+        };
+
+        await chrome.storage.local.set({ [STORAGE_KEY]: nextState });
+        setState(nextState);
       };
 
-      const baseSettings = normalizedBaseState.settings ?? {
-        priceOffsetPercent: DEFAULT_PRICE_OFFSET_PERCENT,
-        priceOffsetMode: 'sideways' as PriceOffsetMode,
-        buyPriceOffset: 0.01,
-        sellPriceOffset: 0.01,
-        tokenAddress: BUILTIN_DEFAULT_TOKEN_ADDRESS,
-        pointsFactor: DEFAULT_POINTS_FACTOR,
-        pointsTarget: DEFAULT_POINTS_TARGET,
-      };
+      const queuedPromise = settingsUpdateQueueRef.current
+        .catch(() => undefined)
+        .then(() => task());
 
-      const nextState = {
-        ...normalizedBaseState,
-        settings: {
-          priceOffsetPercent: baseSettings.priceOffsetPercent,
-          priceOffsetMode: baseSettings.priceOffsetMode,
-          buyPriceOffset: baseSettings.buyPriceOffset,
-          sellPriceOffset: baseSettings.sellPriceOffset,
-          tokenAddress: baseSettings.tokenAddress,
-          pointsFactor: baseSettings.pointsFactor,
-          pointsTarget: baseSettings.pointsTarget,
-          ...settingsPatch,
-        },
-      };
+      settingsUpdateQueueRef.current = queuedPromise.finally(() => undefined);
 
-      await chrome.storage.local.set({ [STORAGE_KEY]: nextState });
-      setState(nextState);
+      return queuedPromise;
     },
     [state],
   );
@@ -1064,6 +1079,12 @@ export function Popup(): React.ReactElement {
   async function handleStart(): Promise<void> {
     if (!activeTab.isSupported || !activeTab.tokenAddress) {
       throw new Error('Open a Binance Alpha token page in the active tab to start automation.');
+    }
+
+    try {
+      await settingsUpdateQueueRef.current;
+    } catch {
+      // Ignore settings persistence errors before starting automation
     }
 
     const payload: { tokenAddress: string; tabId?: number } = {

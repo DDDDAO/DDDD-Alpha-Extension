@@ -1,7 +1,9 @@
 import {
+  DEFAULT_BUY_PRICE_OFFSET_PERCENT,
   DEFAULT_POINTS_FACTOR,
   DEFAULT_POINTS_TARGET,
   DEFAULT_PRICE_OFFSET_PERCENT,
+  DEFAULT_SELL_PRICE_OFFSET_PERCENT,
   MAX_SUCCESSFUL_TRADES,
   SUCCESSFUL_TRADES_LIMIT_MESSAGE,
 } from '../config/defaults.js';
@@ -275,8 +277,8 @@ let runtimeUnavailable = false;
 let automationEnabled = false;
 let automationStateWatcherInitialized = false;
 let priceOffsetPercent = DEFAULT_PRICE_OFFSET_PERCENT;
-let buyPriceOffset = DEFAULT_PRICE_OFFSET_PERCENT;
-let sellPriceOffset = DEFAULT_PRICE_OFFSET_PERCENT;
+let buyPriceOffset = DEFAULT_BUY_PRICE_OFFSET_PERCENT;
+let sellPriceOffset = DEFAULT_SELL_PRICE_OFFSET_PERCENT;
 let pointsFactor = DEFAULT_POINTS_FACTOR;
 let pointsTarget = DEFAULT_POINTS_TARGET;
 let nextEvaluationTimeoutId: number | undefined;
@@ -1136,8 +1138,8 @@ function initializeAutomationStateWatcher(): void {
 function applyAutomationState(value: unknown): void {
   let nextEnabled = false;
   let nextPriceOffset = DEFAULT_PRICE_OFFSET_PERCENT;
-  let nextBuyPriceOffset = DEFAULT_PRICE_OFFSET_PERCENT;
-  let nextSellPriceOffset = DEFAULT_PRICE_OFFSET_PERCENT;
+  let nextBuyPriceOffset = DEFAULT_BUY_PRICE_OFFSET_PERCENT;
+  let nextSellPriceOffset = DEFAULT_SELL_PRICE_OFFSET_PERCENT;
   let nextPointsFactor = DEFAULT_POINTS_FACTOR;
   let nextPointsTarget = DEFAULT_POINTS_TARGET;
 
@@ -1147,14 +1149,20 @@ function applyAutomationState(value: unknown): void {
 
     if (record.settings && typeof record.settings === 'object') {
       const candidate = (record.settings as { priceOffsetPercent?: unknown }).priceOffsetPercent;
-      nextPriceOffset = extractPriceOffsetPercent(candidate);
+      nextPriceOffset = extractPriceOffsetPercent(candidate, DEFAULT_PRICE_OFFSET_PERCENT);
 
       const buyOffsetCandidate = (record.settings as { buyPriceOffset?: unknown }).buyPriceOffset;
-      nextBuyPriceOffset = extractPriceOffsetPercent(buyOffsetCandidate);
+      nextBuyPriceOffset = extractPriceOffsetPercent(
+        buyOffsetCandidate,
+        DEFAULT_BUY_PRICE_OFFSET_PERCENT,
+      );
 
       const sellOffsetCandidate = (record.settings as { sellPriceOffset?: unknown })
         .sellPriceOffset;
-      nextSellPriceOffset = extractPriceOffsetPercent(sellOffsetCandidate);
+      nextSellPriceOffset = extractPriceOffsetPercent(
+        sellOffsetCandidate,
+        DEFAULT_SELL_PRICE_OFFSET_PERCENT,
+      );
 
       const factorCandidate = (record.settings as { pointsFactor?: unknown }).pointsFactor;
       nextPointsFactor = extractPointsFactor(factorCandidate);
@@ -1196,9 +1204,9 @@ function applyAutomationState(value: unknown): void {
   }
 }
 
-function extractPriceOffsetPercent(value: unknown): number {
+function extractPriceOffsetPercent(value: unknown, fallback: number): number {
   if (value === undefined || value === null) {
-    return DEFAULT_PRICE_OFFSET_PERCENT;
+    return clampPriceOffsetPercent(fallback);
   }
 
   if (typeof value === 'number') {
@@ -1207,7 +1215,7 @@ function extractPriceOffsetPercent(value: unknown): number {
 
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) {
-    return DEFAULT_PRICE_OFFSET_PERCENT;
+    return clampPriceOffsetPercent(fallback);
   }
 
   return clampPriceOffsetPercent(parsed);

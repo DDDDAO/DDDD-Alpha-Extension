@@ -27,8 +27,17 @@ import {
 } from 'antd';
 import React, { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { MAX_SUCCESSFUL_TRADES, SUCCESSFUL_TRADES_LIMIT_MESSAGE } from '../config/defaults.js';
-import { STORAGE_KEY, TOKEN_DIRECTORY_STORAGE_KEY } from '../config/storageKey.js';
+import {
+  DEFAULT_BUY_PRICE_OFFSET_PERCENT,
+  DEFAULT_SELL_PRICE_OFFSET_PERCENT,
+  MAX_SUCCESSFUL_TRADES,
+  SUCCESSFUL_TRADES_LIMIT_MESSAGE,
+} from '../config/defaults.js';
+import {
+  PLUGIN_DESC_CLOSED_KEY,
+  STORAGE_KEY,
+  TOKEN_DIRECTORY_STORAGE_KEY,
+} from '../config/storageKey.js';
 import { useI18nUrl } from '../i18n/useI18nUrl';
 import type { ProcessedAirdrop } from '../lib/airdrop.js';
 import { AIRDROP_STORAGE_KEY } from '../lib/airdrop.js';
@@ -249,6 +258,7 @@ export function Popup(): React.ReactElement {
   const [airdropLoading, setAirdropLoading] = useState(false);
   const [orderHistoryError, setOrderHistoryError] = useState<string | null>(null);
   const [nowTick, setNowTick] = useState(Date.now());
+  const [pluginDescClosed, setPluginDescClosed] = useState(false);
 
   const isEditingPointsFactor = useRef(false);
   const isEditingPointsTarget = useRef(false);
@@ -536,6 +546,15 @@ export function Popup(): React.ReactElement {
     }
   }, [requestCurrentBalanceFromTab, requestTokenSymbolFromTab]);
 
+  // Load plugin description closed status
+  useEffect(() => {
+    chrome.storage.local.get([PLUGIN_DESC_CLOSED_KEY], (result) => {
+      if (result[PLUGIN_DESC_CLOSED_KEY] === true) {
+        setPluginDescClosed(true);
+      }
+    });
+  }, []);
+
   // 首次获取平均价格
   useEffect(() => {
     if (hasRequestedAveragePrice.current) {
@@ -807,8 +826,8 @@ export function Popup(): React.ReactElement {
             settings: {
               priceOffsetPercent: DEFAULT_PRICE_OFFSET_PERCENT,
               priceOffsetMode: 'sideways' as PriceOffsetMode,
-              buyPriceOffset: 0.01,
-              sellPriceOffset: -0.01,
+              buyPriceOffset: DEFAULT_BUY_PRICE_OFFSET_PERCENT,
+              sellPriceOffset: DEFAULT_SELL_PRICE_OFFSET_PERCENT,
               tokenAddress: BUILTIN_DEFAULT_TOKEN_ADDRESS,
               pointsFactor: DEFAULT_POINTS_FACTOR,
               pointsTarget: DEFAULT_POINTS_TARGET,
@@ -823,8 +842,8 @@ export function Popup(): React.ReactElement {
           settings: baseState.settings ?? {
             priceOffsetPercent: DEFAULT_PRICE_OFFSET_PERCENT,
             priceOffsetMode: 'sideways' as PriceOffsetMode,
-            buyPriceOffset: 0.01,
-            sellPriceOffset: -0.01,
+            buyPriceOffset: DEFAULT_BUY_PRICE_OFFSET_PERCENT,
+            sellPriceOffset: DEFAULT_SELL_PRICE_OFFSET_PERCENT,
             tokenAddress: BUILTIN_DEFAULT_TOKEN_ADDRESS,
             pointsFactor: DEFAULT_POINTS_FACTOR,
             pointsTarget: DEFAULT_POINTS_TARGET,
@@ -842,8 +861,8 @@ export function Popup(): React.ReactElement {
         const baseSettings = {
           priceOffsetPercent: DEFAULT_PRICE_OFFSET_PERCENT,
           priceOffsetMode: 'sideways' as PriceOffsetMode,
-          buyPriceOffset: 0.01,
-          sellPriceOffset: -0.01,
+          buyPriceOffset: DEFAULT_BUY_PRICE_OFFSET_PERCENT,
+          sellPriceOffset: DEFAULT_SELL_PRICE_OFFSET_PERCENT,
           tokenAddress: BUILTIN_DEFAULT_TOKEN_ADDRESS,
           pointsFactor: DEFAULT_POINTS_FACTOR,
           pointsTarget: DEFAULT_POINTS_TARGET,
@@ -951,8 +970,8 @@ export function Popup(): React.ReactElement {
   // Sync local input values with state, but not during active editing
   useEffect(() => {
     const mode = state?.settings?.priceOffsetMode ?? 'sideways';
-    const buyOffset = state?.settings?.buyPriceOffset ?? 0.01;
-    const sellOffset = state?.settings?.sellPriceOffset ?? 0.01;
+    const buyOffset = state?.settings?.buyPriceOffset ?? DEFAULT_BUY_PRICE_OFFSET_PERCENT;
+    const sellOffset = state?.settings?.sellPriceOffset ?? DEFAULT_SELL_PRICE_OFFSET_PERCENT;
     const factor = getPointsFactor(state);
     const target = getPointsTarget(state);
 
@@ -1260,33 +1279,40 @@ export function Popup(): React.ReactElement {
             <LanguageSwitcher />
           </div>
 
-          <Alert
-            type="info"
-            showIcon
-            message={t('plugin.title')}
-            description={
-              <Space direction="vertical" size={6} style={{ fontSize: 12 }}>
-                <Text style={{ fontSize: 12, color: '#4a4f55' }}>{t('plugin.desc1')}</Text>
-                <Text style={{ fontSize: 12, color: '#4a4f55' }}>{t('plugin.desc2')}</Text>
-                <Link href={GITHUB_REPO_URL} target="_blank" rel="noopener noreferrer">
-                  <Space size={6} align="center">
-                    <img
-                      src={GITHUB_MARK_URL}
-                      alt="GitHub"
-                      style={{ width: 16, height: 16, display: 'block' }}
-                    />
-                    <span style={{ fontSize: 12 }}>{t('plugin.viewGithub')}</span>
-                  </Space>
-                </Link>
-              </Space>
-            }
-            style={{
-              marginBottom: 8,
-              borderRadius: 8,
-              border: '1px solid #91d5ff',
-              background: 'linear-gradient(135deg, #e6f7ff 0%, #f0f9ff 100%)',
-            }}
-          />
+          {!pluginDescClosed && (
+            <Alert
+              type="info"
+              showIcon
+              closable
+              onClose={() => {
+                setPluginDescClosed(true);
+                chrome.storage.local.set({ [PLUGIN_DESC_CLOSED_KEY]: true });
+              }}
+              message={t('plugin.title')}
+              description={
+                <Space direction="vertical" size={6} style={{ fontSize: 12 }}>
+                  <Text style={{ fontSize: 12, color: '#4a4f55' }}>{t('plugin.desc1')}</Text>
+                  <Text style={{ fontSize: 12, color: '#4a4f55' }}>{t('plugin.desc2')}</Text>
+                  <Link href={GITHUB_REPO_URL} target="_blank" rel="noopener noreferrer">
+                    <Space size={6} align="center">
+                      <img
+                        src={GITHUB_MARK_URL}
+                        alt="GitHub"
+                        style={{ width: 16, height: 16, display: 'block' }}
+                      />
+                      <span style={{ fontSize: 12 }}>{t('plugin.viewGithub')}</span>
+                    </Space>
+                  </Link>
+                </Space>
+              }
+              style={{
+                marginBottom: 8,
+                borderRadius: 8,
+                border: '1px solid #91d5ff',
+                background: 'linear-gradient(135deg, #e6f7ff 0%, #f0f9ff 100%)',
+              }}
+            />
+          )}
 
           {orderHistoryError ? (
             <Alert
@@ -1507,13 +1533,13 @@ export function Popup(): React.ReactElement {
               onChange={(e) => {
                 const mode = e.target.value as PriceOffsetMode;
                 setPriceOffsetMode(mode);
-                let buyOffset = 0.01;
-                let sellOffset = -0.01;
+                let buyOffset = DEFAULT_BUY_PRICE_OFFSET_PERCENT;
+                let sellOffset = DEFAULT_SELL_PRICE_OFFSET_PERCENT;
                 if (mode === 'sideways') {
-                  buyOffset = 0.01;
-                  sellOffset = -0.01;
+                  buyOffset = DEFAULT_BUY_PRICE_OFFSET_PERCENT;
+                  sellOffset = DEFAULT_SELL_PRICE_OFFSET_PERCENT;
                 } else if (mode === 'bullish') {
-                  buyOffset = 0.01;
+                  buyOffset = DEFAULT_BUY_PRICE_OFFSET_PERCENT;
                   sellOffset = 0.02;
                 }
                 setBuyPriceOffset(String(buyOffset));

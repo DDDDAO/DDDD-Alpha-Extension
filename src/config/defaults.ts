@@ -7,6 +7,8 @@ export interface AutomationDefaults {
 const BINANCE_ALPHA_BASE_URL = 'https://www.binance.com/en/alpha/bsc/';
 export const DEFAULT_TOKEN_ADDRESS = '0xe6df05ce8c8301223373cf5b969afcb1498c5528';
 export const DEFAULT_PRICE_OFFSET_PERCENT = 0.01;
+export const DEFAULT_BUY_PRICE_OFFSET_PERCENT = DEFAULT_PRICE_OFFSET_PERCENT;
+export const DEFAULT_SELL_PRICE_OFFSET_PERCENT = -0.01;
 export const DEFAULT_POINTS_FACTOR = 1;
 export const DEFAULT_POINTS_TARGET = 15;
 export const MAX_SUCCESSFUL_TRADES = 100;

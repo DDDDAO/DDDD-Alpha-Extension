@@ -416,21 +416,23 @@ chrome.runtime.onMessage.addListener((message: RuntimeMessage, _sender, sendResp
   }
 
   if (message.type === 'REQUEST_CURRENT_BALANCE') {
-    const panel = getTradingFormPanel();
-    let balanceValue: number | null = null;
-    if (panel) {
-      const extracted = extractAvailableUsdt(panel);
-      if (extracted !== null && Number.isFinite(extracted)) {
-        balanceValue = extracted;
+    void (async () => {
+      const panel = getTradingFormPanel();
+      let balanceValue: number | null = null;
+      if (panel) {
+        const extracted = await extractAvailableUsdt(panel);
+        if (extracted !== null && Number.isFinite(extracted)) {
+          balanceValue = extracted;
+        }
       }
-    }
 
-    // eslint-disable-next-line no-console
-    console.log('[dddd-alpah-extension] Current balance requested:', balanceValue);
-    sendResponse({
-      acknowledged: balanceValue !== null,
-      currentBalance: balanceValue ?? null,
-    });
+      // eslint-disable-next-line no-console
+      console.log('[dddd-alpah-extension] Current balance requested:', balanceValue);
+      sendResponse({
+        acknowledged: balanceValue !== null,
+        currentBalance: balanceValue ?? null,
+      });
+    })();
     return true;
   }
 
@@ -494,7 +496,7 @@ async function sendInitialBalanceUpdate(): Promise<void> {
   let currentBalance: number | undefined;
 
   if (panel) {
-    const extracted = extractAvailableUsdt(panel);
+    const extracted = await extractAvailableUsdt(panel);
     if (extracted !== null && Number.isFinite(extracted)) {
       currentBalance = extracted;
     }
@@ -780,12 +782,12 @@ async function executePrimaryTask(
   }
 
   if (orderResult?.status === 'placed') {
-    await delay(1_500);
+    await delay(1_000);
   }
 
   const balancePanel = getTradingFormPanel();
   if (balancePanel) {
-    const balanceValue = extractAvailableUsdt(balancePanel);
+    const balanceValue = await extractAvailableUsdt(balancePanel);
     if (balanceValue !== null && Number.isFinite(balanceValue)) {
       currentBalanceSnapshot = balanceValue;
     }
@@ -1030,7 +1032,7 @@ async function ensureLimitOrderPlaced(params: {
     throw new Error('Trading form panel not found.');
   }
 
-  const availableUsdt = extractAvailableUsdt(orderPanel);
+  const availableUsdt = await extractAvailableUsdt(orderPanel);
   // eslint-disable-next-line no-console
   console.log('[dddd-alpah-extension] Available USDT:', availableUsdt);
 
@@ -1723,15 +1725,8 @@ function formatNumberFixedDecimals(value: number, fractionDigits: number): strin
   return value.toFixed(fractionDigits);
 }
 
-function extractAvailableUsdt(orderPanel: HTMLElement): number | null {
-  // First, find and click the buy button to ensure we're on the buy tab
-  const buyButton = orderPanel.querySelector('button.bn-button__buy') as HTMLButtonElement;
-  if (buyButton && !buyButton.classList.contains('active')) {
-    // Click the buy button if it's not already active
-    buyButton.click();
-    // Give it a moment to update the UI
-    // Note: This is synchronous, but the UI should update quickly
-  }
+async function extractAvailableUsdt(orderPanel: HTMLElement): Promise<number | null> {
+  await ensureLimitOrderMode(orderPanel);
 
   const locale = getPageLocale();
   const labelText = locale === 'zh-CN' ? '可用' : 'Available';

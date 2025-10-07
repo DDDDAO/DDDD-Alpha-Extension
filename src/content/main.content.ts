@@ -30,9 +30,6 @@ const LIMIT_STATE_TIMEOUT_MS = 2_000;
 const LIMIT_STATE_POLL_INTERVAL_MS = 100;
 const MIN_AUTOMATION_DELAY_MS = 5_000;
 const MAX_AUTOMATION_DELAY_MS = 10_000;
-const PENDING_BUY_ORDER_WARNING_DELAY_MS = 10_000;
-const PENDING_BUY_ORDER_CHECK_INTERVAL_MS = 1_000;
-const PENDING_ORDER_WARNING_ELEMENT_ID = 'dddd-alpha-pending-order-warning';
 
 const MIN_PRICE_OFFSET_PERCENT = -5;
 const MAX_PRICE_OFFSET_PERCENT = 5;
@@ -351,8 +348,6 @@ let pointsFactor = DEFAULT_POINTS_FACTOR;
 let pointsTarget = DEFAULT_POINTS_TARGET;
 let nextEvaluationTimeoutId: number | undefined;
 let automationLoopActive = false;
-let pendingBuyOrderMonitorId: number | undefined;
-let pendingOrderWarningVisible = false;
 
 const MULTIPLIER_CACHE_DURATION_MS = 5 * 60_000;
 
@@ -367,8 +362,6 @@ interface TokenDirectoryContainer {
 
 let cachedAlphaMultiplierMap: Record<string, number> | null = null;
 let cachedAlphaMultiplierTimestamp = 0;
-const pendingBuyOrderTimestamps = new Map<string, number>();
-const pendingBuyOrderWarningsShown = new Set<string>();
 
 chrome.runtime.onMessage.addListener((message: RuntimeMessage, _sender, sendResponse) => {
   // eslint-disable-next-line no-console
@@ -486,7 +479,6 @@ chrome.runtime.onMessage.addListener((message: RuntimeMessage, _sender, sendResp
 
 initializeAutomationStateWatcher();
 void sendInitialBalanceUpdate();
-startPendingOrderMonitor();
 
 async function sendInitialBalanceUpdate(): Promise<void> {
   // 延迟5秒,确保页面有足够时间加载余额
@@ -1157,230 +1149,6 @@ function getLimitOrdersContainer(root: HTMLElement): HTMLElement | null {
 function getOpenOrdersRoot(): HTMLElement | null {
   const node = document.querySelector('.trd-order');
   return node instanceof HTMLElement ? node : null;
-}
-
-function startPendingOrderMonitor(): void {
-  if (pendingBuyOrderMonitorId !== undefined) {
-    return;
-  }
-
-  const runCheck = () => {
-    try {
-      checkPendingBuyLimitOrders();
-    } catch (error) {
-      const messageText = error instanceof Error ? error.message : String(error);
-      // eslint-disable-next-line no-console
-      console.warn('[dddd-alpah-extension] Pending order monitor error:', messageText);
-    }
-  };
-
-  runCheck();
-  pendingBuyOrderMonitorId = window.setInterval(runCheck, PENDING_BUY_ORDER_CHECK_INTERVAL_MS);
-}
-
-function checkPendingBuyLimitOrders(): void {
-  const root = getOpenOrdersRoot();
-  if (!root) {
-    if (pendingBuyOrderTimestamps.size > 0 || pendingBuyOrderWarningsShown.size > 0) {
-      pendingBuyOrderTimestamps.clear();
-      pendingBuyOrderWarningsShown.clear();
-    }
-    return;
-  }
-
-  const activeKeys = extractOpenBuyLimitOrderKeys(root);
-  const now = Date.now();
-  const activeKeySet = new Set(activeKeys);
-
-  for (const key of activeKeys) {
-    if (!pendingBuyOrderTimestamps.has(key)) {
-      pendingBuyOrderTimestamps.set(key, now);
-    }
-  }
-
-  for (const key of Array.from(pendingBuyOrderTimestamps.keys())) {
-    if (!activeKeySet.has(key)) {
-      pendingBuyOrderTimestamps.delete(key);
-      pendingBuyOrderWarningsShown.delete(key);
-    }
-  }
-
-  for (const [key, startedAt] of pendingBuyOrderTimestamps.entries()) {
-    if (
-      now - startedAt >= PENDING_BUY_ORDER_WARNING_DELAY_MS &&
-      !pendingBuyOrderWarningsShown.has(key)
-    ) {
-      // eslint-disable-next-line no-console
-      console.warn(
-        '[dddd-alpah-extension] Buy limit order pending over threshold, showing reminder',
-      );
-      showPendingBuyOrderWarning();
-      pendingBuyOrderWarningsShown.add(key);
-    }
-  }
-}
-
-function extractOpenBuyLimitOrderKeys(root: HTMLElement): string[] {
-  const container = getLimitOrdersContainer(root);
-  if (!container) {
-    return [];
-  }
-
-  const rowNodes = Array.from(
-    container.querySelectorAll<HTMLElement>('[data-row-index],[role="row"],table tbody tr'),
-  );
-
-  const keys: string[] = [];
-
-  for (const row of rowNodes) {
-    const normalizedText = getNormalizedOrderRowText(row);
-    if (!normalizedText) {
-      continue;
-    }
-
-    if (!isBuyLimitOrderText(normalizedText)) {
-      continue;
-    }
-
-    if (!/\d/.test(normalizedText)) {
-      continue;
-    }
-
-    const signature = getOrderRowSignature(row, normalizedText);
-    if (!signature) {
-      continue;
-    }
-
-    keys.push(signature);
-  }
-
-  return keys;
-}
-
-function getOrderRowSignature(row: HTMLElement, normalizedText: string): string | null {
-  const dataRowIndex = row.getAttribute('data-row-index');
-  const dataRowId = row.getAttribute('data-row-id');
-  const datasetKey = row.dataset?.rowKey;
-
-  const identifier = dataRowIndex ?? dataRowId ?? datasetKey;
-  if (identifier && identifier.length > 0) {
-    return `${identifier}|${normalizedText}`;
-  }
-
-  if (normalizedText.length === 0) {
-    return null;
-  }
-
-  return normalizedText;
-}
-
-function getNormalizedOrderRowText(row: HTMLElement): string | null {
-  const text = row.textContent?.trim();
-  if (!text) {
-    return null;
-  }
-
-  return text.replace(/\s+/g, ' ').trim().toLowerCase();
-}
-
-function isBuyLimitOrderText(normalizedText: string): boolean {
-  const hasBuy = normalizedText.includes('buy') || normalizedText.includes('买入');
-  if (!hasBuy) {
-    return false;
-  }
-
-  const hasLimit =
-    normalizedText.includes('limit') ||
-    normalizedText.includes('限价') ||
-    normalizedText.includes('限价单');
-
-  if (hasLimit) {
-    return true;
-  }
-
-  const hasMarket = normalizedText.includes('market') || normalizedText.includes('市价');
-  return hasBuy && !hasMarket;
-}
-
-function showPendingBuyOrderWarning(): void {
-  if (pendingOrderWarningVisible) {
-    return;
-  }
-
-  const body = document.body;
-  if (!body) {
-    return;
-  }
-
-  const existing = document.getElementById(PENDING_ORDER_WARNING_ELEMENT_ID);
-  if (existing) {
-    existing.remove();
-  }
-
-  const container = document.createElement('div');
-  container.id = PENDING_ORDER_WARNING_ELEMENT_ID;
-  container.style.position = 'fixed';
-  container.style.top = '24px';
-  container.style.right = '24px';
-  container.style.zIndex = '2147483647';
-  container.style.background = 'rgba(17, 24, 39, 0.94)';
-  container.style.color = '#ffffff';
-  container.style.padding = '16px';
-  container.style.borderRadius = '12px';
-  container.style.boxShadow = '0 12px 30px rgba(0, 0, 0, 0.45)';
-  container.style.maxWidth = '320px';
-  container.style.fontFamily =
-    'Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", sans-serif';
-
-  const title = document.createElement('div');
-  title.textContent = '买入限价单超过 10 秒未成交';
-  title.style.fontSize = '16px';
-  title.style.fontWeight = '600';
-  title.style.marginBottom = '8px';
-
-  const description = document.createElement('div');
-  description.textContent = '请检查当前委托，避免被夹单或及时调整价格。';
-  description.style.fontSize = '14px';
-  description.style.lineHeight = '1.6';
-  description.style.marginBottom = '12px';
-
-  const actionButton = document.createElement('button');
-  actionButton.type = 'button';
-  actionButton.textContent = '我知道了';
-  actionButton.style.background = '#f0b90b';
-  actionButton.style.color = '#1b1f23';
-  actionButton.style.border = 'none';
-  actionButton.style.borderRadius = '8px';
-  actionButton.style.padding = '8px 14px';
-  actionButton.style.fontWeight = '600';
-  actionButton.style.cursor = 'pointer';
-
-  const dismiss = () => {
-    if (!pendingOrderWarningVisible) {
-      return;
-    }
-
-    pendingOrderWarningVisible = false;
-    if (container.parentElement) {
-      container.parentElement.removeChild(container);
-    }
-  };
-
-  actionButton.addEventListener('click', dismiss);
-  container.addEventListener('click', (event) => {
-    if (event.target === container) {
-      dismiss();
-    }
-  });
-
-  container.appendChild(title);
-  container.appendChild(description);
-  container.appendChild(actionButton);
-
-  body.appendChild(container);
-  pendingOrderWarningVisible = true;
-
-  window.setTimeout(dismiss, 20_000);
 }
 
 function getTradingFormPanel(): HTMLElement | null {

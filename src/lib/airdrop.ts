@@ -197,7 +197,7 @@ function determineBucket(
   return null;
 }
 
-function getLocale(): string {
+function getLocaleFromStorage(): string {
   try {
     return localStorage.getItem('dddd-alpha-language') || 'zh-CN';
   } catch {
@@ -232,8 +232,8 @@ function buildDisplayTime(
   bucket: Bucket | null,
   categoryDate: string | null,
   referenceInfo: LocalDateInfo | null,
+  locale: string,
 ): string {
-  const locale = getLocale();
   const trimmedBase = baseLabel.trim();
   const normalizedBase = trimmedBase.length > 0 ? trimmedBase : baseLabel;
 
@@ -242,7 +242,7 @@ function buildDisplayTime(
   }
 
   if (bucket === 'tomorrow') {
-    const tomorrowText = locale === 'en' ? 'Tomorrow' : '明天';
+    const tomorrowText = locale.startsWith('en') ? 'Tomorrow' : '明天';
     if (!hasExplicitTime) {
       return tomorrowText;
     }
@@ -307,7 +307,11 @@ function computeSortKey(info: LocalDateInfo | null, airdrop: AirdropApiItem): nu
   return Math.min(...candidates);
 }
 
-export function processAirdropApiResponse(apiData: AirdropApiResponse | null): AirdropData {
+export function processAirdropApiResponse(
+  apiData: AirdropApiResponse | null,
+  locale?: string,
+): AirdropData {
+  const effectiveLocale = locale || getLocaleFromStorage();
   const now = new Date();
   const beijingOffsetMs = 8 * 60 * 60 * 1000;
   const beijingToday = new Date(now.getTime() + beijingOffsetMs).toISOString().split('T')[0];
@@ -363,9 +367,8 @@ export function processAirdropApiResponse(apiData: AirdropApiResponse | null): A
       return;
     }
 
-    const locale = getLocale();
     const baseTimeFromApi = sanitizeText(airdrop.utc) ?? sanitizeText(airdrop.time);
-    let baseLabel = locale === 'en' ? 'TBA' : '待公布';
+    let baseLabel = effectiveLocale.startsWith('en') ? 'TBA' : '待公布';
     let hasExplicitTime = false;
 
     if (localInfo && !localInfo.usedFallbackTime) {
@@ -383,6 +386,7 @@ export function processAirdropApiResponse(apiData: AirdropApiResponse | null): A
       bucket,
       categoryDate,
       localInfo,
+      effectiveLocale,
     );
 
     const processed: ProcessedAirdrop = {

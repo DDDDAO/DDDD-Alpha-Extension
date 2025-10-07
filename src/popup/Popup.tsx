@@ -1159,6 +1159,10 @@ export function Popup(): React.ReactElement {
   const requiresLogin = state?.requiresLogin === true;
   const loginRequired = requiresLogin || state?.lastError === '请先登录币安';
 
+  const isStartDisabled =
+    controlsBusy || isEnabled || !canOperate || successfulTradeLimitReached || loginRequired;
+  const isStopDisabled = controlsBusy || !isEnabled;
+
   function calculateTotalCost(): number | undefined {
     const firstBalance =
       state?.dailyBuyVolume?.date === todayKey
@@ -1235,7 +1239,7 @@ export function Popup(): React.ReactElement {
       style={{
         width: 440,
         padding: '20px 18px',
-        background: '#f5f7fa',
+        background: 'linear-gradient(180deg, #f0f5fa 0%, #e6ecf5 100%)',
         minHeight: 600,
       }}
     >
@@ -1244,8 +1248,19 @@ export function Popup(): React.ReactElement {
         style={{
           marginBottom: 16,
           borderRadius: 16,
-          boxShadow: '0 2px 12px rgba(0, 0, 0, 0.06)',
-          background: '#ffffff',
+          boxShadow: '0 2px 12px rgba(0, 0, 0, 0.06), 0 0 0 1px rgba(0, 0, 0, 0.02)',
+          background: 'linear-gradient(135deg, #ffffff 0%, #fafbfc 100%)',
+          transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+        }}
+        onMouseEnter={(e) => {
+          e.currentTarget.style.transform = 'translateY(-2px)';
+          e.currentTarget.style.boxShadow =
+            '0 4px 20px rgba(0, 0, 0, 0.08), 0 0 0 1px rgba(24, 144, 255, 0.1)';
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.transform = 'translateY(0)';
+          e.currentTarget.style.boxShadow =
+            '0 2px 12px rgba(0, 0, 0, 0.06), 0 0 0 1px rgba(0, 0, 0, 0.02)';
         }}
       >
         <Space direction="vertical" size={12} style={{ width: '100%' }}>
@@ -1366,9 +1381,18 @@ export function Popup(): React.ReactElement {
                 style={{
                   height: '100%',
                   borderRadius: 12,
-                  boxShadow: '0 1px 8px rgba(0,0,0,0.04)',
-                  background: '#f6ffed',
-                  border: '1px solid #b7eb8f',
+                  boxShadow: '0 2px 10px rgba(82, 196, 26, 0.08)',
+                  background: 'linear-gradient(135deg, #f6ffed 0%, #fcffe6 100%)',
+                  border: '1px solid rgba(183, 235, 143, 0.4)',
+                  transition: 'all 0.3s ease',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.boxShadow = '0 4px 16px rgba(82, 196, 26, 0.12)';
+                  e.currentTarget.style.borderColor = 'rgba(183, 235, 143, 0.6)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.boxShadow = '0 2px 10px rgba(82, 196, 26, 0.08)';
+                  e.currentTarget.style.borderColor = 'rgba(183, 235, 143, 0.4)';
                 }}
               >
                 {stabilityLoading ? (
@@ -1394,7 +1418,7 @@ export function Popup(): React.ReactElement {
                             direction="vertical"
                             style={{ width: '100%', gap: 2 }}
                           >
-                            <Space size="small" align="center">
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                               {tokenInfo?.iconUrl && (
                                 <img
                                   src={tokenInfo.iconUrl}
@@ -1404,6 +1428,7 @@ export function Popup(): React.ReactElement {
                                     height: 14,
                                     borderRadius: '50%',
                                     objectFit: 'cover',
+                                    flex: '0 0 14px',
                                   }}
                                 />
                               )}
@@ -1415,6 +1440,8 @@ export function Popup(): React.ReactElement {
                                     fontSize: 12,
                                     fontWeight: 600,
                                     textDecoration: 'none',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
                                   }}
                                   onClick={(event) => {
                                     event.preventDefault();
@@ -1430,7 +1457,14 @@ export function Popup(): React.ReactElement {
                                   {normalizedSymbol}
                                 </a>
                               ) : (
-                                <Text strong style={{ fontSize: 12 }}>
+                                <Text
+                                  strong
+                                  style={{
+                                    fontSize: 12,
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                  }}
+                                >
                                   {normalizedSymbol}
                                 </Text>
                               )}
@@ -1439,7 +1473,7 @@ export function Popup(): React.ReactElement {
                                   {t('stability.quad')}
                                 </Tag>
                               )}
-                            </Space>
+                            </div>
                             <Space size="small">
                               <Text type="secondary" style={{ fontSize: 10 }}>
                                 {t('stability.spread')}: {item.spr.toFixed(2)}
@@ -1470,13 +1504,27 @@ export function Popup(): React.ReactElement {
                 style={{
                   height: '100%',
                   borderRadius: 12,
-                  boxShadow: '0 1px 8px rgba(0,0,0,0.04)',
-                  border: '1px solid #d9d9d9',
+                  boxShadow: '0 2px 10px rgba(24, 144, 255, 0.06)',
+                  background: 'linear-gradient(135deg, #ffffff 0%, #f0f9ff 100%)',
+                  border: '1px solid rgba(24, 144, 255, 0.15)',
+                  transition: 'all 0.3s ease',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.boxShadow = '0 4px 16px rgba(24, 144, 255, 0.1)';
+                  e.currentTarget.style.borderColor = 'rgba(24, 144, 255, 0.25)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.boxShadow = '0 2px 10px rgba(24, 144, 255, 0.06)';
+                  e.currentTarget.style.borderColor = 'rgba(24, 144, 255, 0.15)';
                 }}
               >
                 <Space direction="vertical" size="small" style={{ width: '100%' }}>
-                  <div>
-                    <Space size={6} align="center">
+                  <div style={{ display: 'flex', alignItems: 'center' }}>
+                    <Space
+                      size={6}
+                      align="center"
+                      style={{ display: 'flex', alignItems: 'center' }}
+                    >
                       {resolvedTokenInfo?.iconUrl && (
                         <img
                           src={resolvedTokenInfo.iconUrl}
@@ -1486,10 +1534,11 @@ export function Popup(): React.ReactElement {
                             height: 18,
                             borderRadius: '50%',
                             objectFit: 'cover',
+                            display: 'block',
                           }}
                         />
                       )}
-                      <Text strong style={{ fontSize: 14 }}>
+                      <Text strong style={{ fontSize: 14, lineHeight: '18px' }}>
                         {resolvedSymbolDisplay}
                       </Text>
                     </Space>
@@ -1545,38 +1594,79 @@ export function Popup(): React.ReactElement {
         title={
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <Space size={10}>
-              <ThunderboltOutlined style={{ color: '#1890ff', fontSize: 18 }} />
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  width: 32,
+                  height: 32,
+                  borderRadius: 8,
+                  background: 'linear-gradient(135deg, #1890ff 0%, #096dd9 100%)',
+                  boxShadow: '0 2px 8px rgba(24, 144, 255, 0.2)',
+                }}
+              >
+                <ThunderboltOutlined style={{ color: '#ffffff', fontSize: 16 }} />
+              </div>
               <span style={{ fontWeight: 600, fontSize: 16, color: '#262626' }}>
                 {t('settings.title')}
               </span>
             </Space>
-            <Space size="small">
-              <Button
-                type="primary"
-                icon={<PlayCircleOutlined />}
-                loading={controlsBusy}
-                disabled={
-                  controlsBusy ||
-                  isEnabled ||
-                  !canOperate ||
-                  successfulTradeLimitReached ||
-                  loginRequired
-                }
-                onClick={() => void handleStart()}
-                size="middle"
-              >
-                {t('controls.start')}
-              </Button>
-              <Button
-                danger
-                icon={<PauseCircleOutlined />}
-                loading={controlsBusy}
-                disabled={controlsBusy || !isEnabled}
-                onClick={() => void handleStop()}
-                size="middle"
-              >
-                {t('controls.stop')}
-              </Button>
+            <Space size={8}>
+              <div style={{ display: 'flex', cursor: isStartDisabled ? 'not-allowed' : 'pointer' }}>
+                <Button
+                  type="primary"
+                  htmlType="button"
+                  icon={<PlayCircleOutlined style={{ fontSize: 14 }} />}
+                  loading={controlsBusy}
+                  disabled={isStartDisabled}
+                  onClick={() => void handleStart()}
+                  size="middle"
+                  style={{
+                    background: isStartDisabled
+                      ? '#d9d9d9'
+                      : 'linear-gradient(135deg, #73d13d 0%, #52c41a 100%)',
+                    borderColor: 'transparent',
+                    borderRadius: 24,
+                    fontWeight: 600,
+                    boxShadow: isStartDisabled ? 'none' : '0 2px 6px rgba(82, 196, 26, 0.28)',
+                    height: 34,
+                    paddingLeft: 16,
+                    paddingRight: 16,
+                    color: '#ffffff',
+                    cursor: 'inherit',
+                  }}
+                >
+                  {t('controls.start')}
+                </Button>
+              </div>
+              <div style={{ display: 'flex', cursor: isStopDisabled ? 'not-allowed' : 'pointer' }}>
+                <Button
+                  danger
+                  htmlType="button"
+                  icon={<PauseCircleOutlined style={{ fontSize: 14 }} />}
+                  loading={controlsBusy}
+                  disabled={isStopDisabled}
+                  onClick={() => void handleStop()}
+                  size="middle"
+                  style={{
+                    background: isStopDisabled
+                      ? '#d9d9d9'
+                      : 'linear-gradient(135deg, #ff7875 0%, #f5222d 100%)',
+                    borderColor: 'transparent',
+                    borderRadius: 24,
+                    fontWeight: 600,
+                    boxShadow: isStopDisabled ? 'none' : '0 2px 6px rgba(255, 120, 117, 0.28)',
+                    height: 34,
+                    paddingLeft: 16,
+                    paddingRight: 16,
+                    color: '#ffffff',
+                    cursor: 'inherit',
+                  }}
+                >
+                  {t('controls.stop')}
+                </Button>
+              </div>
             </Space>
           </div>
         }
@@ -1584,9 +1674,20 @@ export function Popup(): React.ReactElement {
         style={{
           marginBottom: 16,
           borderRadius: 16,
-          boxShadow: '0 2px 12px rgba(0, 0, 0, 0.06)',
-          background: '#ffffff',
-          border: '1px solid #e8e8e8',
+          boxShadow: '0 2px 12px rgba(0, 0, 0, 0.06), 0 0 0 1px rgba(0, 0, 0, 0.02)',
+          background: 'linear-gradient(135deg, #ffffff 0%, #fafbfc 100%)',
+          border: 'none',
+          transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+        }}
+        onMouseEnter={(e) => {
+          e.currentTarget.style.transform = 'translateY(-2px)';
+          e.currentTarget.style.boxShadow =
+            '0 4px 20px rgba(0, 0, 0, 0.08), 0 0 0 1px rgba(24, 144, 255, 0.1)';
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.transform = 'translateY(0)';
+          e.currentTarget.style.boxShadow =
+            '0 2px 12px rgba(0, 0, 0, 0.06), 0 0 0 1px rgba(0, 0, 0, 0.02)';
         }}
       >
         <Space direction="vertical" size={16} style={{ width: '100%' }}>
@@ -1677,6 +1778,10 @@ export function Popup(): React.ReactElement {
                         buyPriceOffset: finalValue,
                       });
                     }}
+                    onPressEnter={(e) => {
+                      e.preventDefault();
+                      (e.target as HTMLInputElement).blur();
+                    }}
                     disabled={controlsBusy}
                     controls={true}
                     keyboard={true}
@@ -1714,6 +1819,10 @@ export function Popup(): React.ReactElement {
                         sellPriceOffset: finalValue,
                       });
                     }}
+                    onPressEnter={(e) => {
+                      e.preventDefault();
+                      (e.target as HTMLInputElement).blur();
+                    }}
                     disabled={controlsBusy}
                     controls={true}
                     keyboard={true}
@@ -1749,6 +1858,10 @@ export function Popup(): React.ReactElement {
                 setLocalPointsFactor(String(value ?? 1));
               }}
               onBlur={(e) => void handlePointsFactorChange(e.target.value)}
+              onPressEnter={(e) => {
+                e.preventDefault();
+                (e.target as HTMLInputElement).blur();
+              }}
               disabled={controlsBusy || isPointsFactorLocked}
               title="每次成功订单后应用于记录买入量的乘数"
               style={{ width: '100%' }}
@@ -1776,6 +1889,10 @@ export function Popup(): React.ReactElement {
                 setLocalPointsTarget(String(value ?? 15));
               }}
               onBlur={(e) => void handlePointsTargetChange(e.target.value)}
+              onPressEnter={(e) => {
+                e.preventDefault();
+                (e.target as HTMLInputElement).blur();
+              }}
               disabled={controlsBusy}
               title="当今日 alpha 积分超过此阈值时停止自动化"
               style={{ width: '100%' }}
@@ -1784,47 +1901,109 @@ export function Popup(): React.ReactElement {
         </Space>
       </Card>
 
-      <Space direction="vertical" size={12} style={{ width: '100%' }}>
+      <Space direction="vertical" size={12} style={{ width: '100%', marginBottom: 16 }}>
         {!activeTab.isSupported && (
           <Alert
-            message={t('controls.needAlphaPage')}
+            message={
+              <span style={{ fontSize: '14px', fontWeight: 600, color: '#d48806' }}>
+                {t('controls.needAlphaPage')}
+              </span>
+            }
             description={
               <Link
                 href={getBinanceAlphaUrl(BUILTIN_DEFAULT_TOKEN_ADDRESS)}
                 target="_blank"
                 rel="noopener noreferrer"
+                style={{
+                  fontSize: '13px',
+                  fontWeight: 600,
+                  color: '#1890ff',
+                  textDecoration: 'underline',
+                  transition: 'all 0.2s ease',
+                }}
               >
-                {t('controls.clickToOpen')}
+                {t('controls.clickToOpen')} →
               </Link>
             }
             type="warning"
             showIcon
+            style={{
+              borderRadius: '12px',
+              border: '1px solid #ffe58f',
+              background: 'linear-gradient(135deg, #fffbe6 0%, #fff9e6 100%)',
+              boxShadow: '0 2px 10px rgba(250, 173, 20, 0.15)',
+              padding: '12px 16px',
+            }}
           />
         )}
 
         {state?.lastError && (
           <Alert
-            message={t('controls.error')}
-            description={state.lastError}
+            message={
+              <span style={{ fontSize: '14px', fontWeight: 600, color: '#cf1322' }}>
+                {t('controls.error')}
+              </span>
+            }
+            description={
+              <span style={{ fontSize: '13px', color: '#595959' }}>{state.lastError}</span>
+            }
             type="error"
             showIcon
             closable
+            style={{
+              borderRadius: '12px',
+              border: '1px solid #ffccc7',
+              background: 'linear-gradient(135deg, #fff1f0 0%, #ffe8e6 100%)',
+              boxShadow: '0 2px 10px rgba(255, 77, 79, 0.15)',
+              padding: '12px 16px',
+            }}
           />
         )}
 
         {isEnabled && (
-          <Alert message={t('controls.running')} type={isRunning ? 'success' : 'info'} showIcon />
+          <Alert
+            message={
+              <span
+                style={{
+                  fontSize: '14px',
+                  fontWeight: 600,
+                  color: isRunning ? '#389e0d' : '#0958d9',
+                }}
+              >
+                {t('controls.running')}
+              </span>
+            }
+            type={isRunning ? 'success' : 'info'}
+            showIcon
+            style={{
+              borderRadius: '12px',
+              border: isRunning ? '1px solid #b7eb8f' : '1px solid #91caff',
+              background: isRunning
+                ? 'linear-gradient(135deg, #f6ffed 0%, #f0ffe6 100%)'
+                : 'linear-gradient(135deg, #e6f4ff 0%, #d6f0ff 100%)',
+              boxShadow: isRunning
+                ? '0 2px 10px rgba(82, 196, 26, 0.15)'
+                : '0 2px 10px rgba(24, 144, 255, 0.15)',
+              padding: '12px 16px',
+            }}
+          />
         )}
 
         {successfulTradeLimitReached && (
           <Alert
-            message={SUCCESSFUL_TRADES_LIMIT_MESSAGE}
+            message={
+              <span style={{ fontSize: '14px', fontWeight: 600, color: '#d48806' }}>
+                {SUCCESSFUL_TRADES_LIMIT_MESSAGE}
+              </span>
+            }
             type="warning"
             showIcon
             style={{
-              borderRadius: 12,
-              border: '1px solid #ffd666',
-              background: '#fffbe6',
+              borderRadius: '12px',
+              border: '1px solid #ffe58f',
+              background: 'linear-gradient(135deg, #fffbe6 0%, #fff9e6 100%)',
+              boxShadow: '0 2px 10px rgba(250, 173, 20, 0.15)',
+              padding: '12px 16px',
             }}
           />
         )}
@@ -1833,14 +2012,24 @@ export function Popup(): React.ReactElement {
           Number.isFinite(todaysAlphaPoints) &&
           todaysAlphaPoints >= pointsTargetValue && (
             <Alert
-              message={t('controls.targetReached')}
-              description={`${t('controls.currentPoints')} ${todaysAlphaPoints} ≥ ${t('controls.target')} ${pointsTargetValue}`}
+              message={
+                <span style={{ fontSize: '14px', fontWeight: 600, color: '#389e0d' }}>
+                  {t('controls.targetReached')}
+                </span>
+              }
+              description={
+                <span style={{ fontSize: '13px', color: '#595959' }}>
+                  {`${t('controls.currentPoints')} ${todaysAlphaPoints} ≥ ${t('controls.target')} ${pointsTargetValue}`}
+                </span>
+              }
               type="success"
               showIcon
               style={{
-                borderRadius: 12,
-                border: '1px solid #95de64',
-                background: '#f6ffed',
+                borderRadius: '12px',
+                border: '1px solid #b7eb8f',
+                background: 'linear-gradient(135deg, #f6ffed 0%, #f0ffe6 100%)',
+                boxShadow: '0 2px 10px rgba(82, 196, 26, 0.15)',
+                padding: '12px 16px',
               }}
             />
           )}
@@ -1850,6 +2039,20 @@ export function Popup(): React.ReactElement {
         <Card
           title={
             <Space size={10}>
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  width: 32,
+                  height: 32,
+                  borderRadius: 8,
+                  background: 'linear-gradient(135deg, #faad14 0%, #d48806 100%)',
+                  boxShadow: '0 2px 8px rgba(250, 173, 20, 0.2)',
+                }}
+              >
+                <TrophyOutlined style={{ color: '#ffffff', fontSize: 16 }} />
+              </div>
               <span style={{ fontWeight: 600, fontSize: 16 }}>{t('stats.todayStats')}</span>
               <Tooltip title={t('stats.statsTooltip')}>
                 <InfoCircleOutlined style={{ color: '#1890ff' }} />
@@ -1860,9 +2063,20 @@ export function Popup(): React.ReactElement {
           style={{
             marginBottom: 16,
             borderRadius: 16,
-            boxShadow: '0 2px 12px rgba(0, 0, 0, 0.06)',
-            background: '#ffffff',
-            border: '1px solid #e8e8e8',
+            boxShadow: '0 2px 12px rgba(0, 0, 0, 0.06), 0 0 0 1px rgba(0, 0, 0, 0.02)',
+            background: 'linear-gradient(135deg, #ffffff 0%, #fffbf0 100%)',
+            border: 'none',
+            transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.transform = 'translateY(-2px)';
+            e.currentTarget.style.boxShadow =
+              '0 4px 20px rgba(250, 173, 20, 0.1), 0 0 0 1px rgba(250, 173, 20, 0.1)';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.transform = 'translateY(0)';
+            e.currentTarget.style.boxShadow =
+              '0 2px 12px rgba(0, 0, 0, 0.06), 0 0 0 1px rgba(0, 0, 0, 0.02)';
           }}
         >
           <Row gutter={[16, 16]}>
@@ -2024,7 +2238,20 @@ export function Popup(): React.ReactElement {
       <Card
         title={
           <Space size={10}>
-            <BellOutlined style={{ color: '#ff4d4f', fontSize: 18 }} />
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                width: 32,
+                height: 32,
+                borderRadius: 8,
+                background: 'linear-gradient(135deg, #ff4d4f 0%, #cf1322 100%)',
+                boxShadow: '0 2px 8px rgba(255, 77, 79, 0.2)',
+              }}
+            >
+              <BellOutlined style={{ color: '#ffffff', fontSize: 16 }} />
+            </div>
             <span style={{ fontWeight: 600, fontSize: 16 }}>{t('airdrop.title')}</span>
             <Text type="secondary" style={{ fontSize: 12 }}>
               {t('airdrop.autoUpdate')}
@@ -2035,9 +2262,20 @@ export function Popup(): React.ReactElement {
         size="small"
         style={{
           borderRadius: 16,
-          boxShadow: '0 2px 12px rgba(0, 0, 0, 0.06)',
-          background: '#ffffff',
-          border: '1px solid #e8e8e8',
+          boxShadow: '0 2px 12px rgba(0, 0, 0, 0.06), 0 0 0 1px rgba(0, 0, 0, 0.02)',
+          background: 'linear-gradient(135deg, #ffffff 0%, #fff0f0 100%)',
+          border: 'none',
+          transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+        }}
+        onMouseEnter={(e) => {
+          e.currentTarget.style.transform = 'translateY(-2px)';
+          e.currentTarget.style.boxShadow =
+            '0 4px 20px rgba(255, 77, 79, 0.08), 0 0 0 1px rgba(255, 77, 79, 0.1)';
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.transform = 'translateY(0)';
+          e.currentTarget.style.boxShadow =
+            '0 2px 12px rgba(0, 0, 0, 0.06), 0 0 0 1px rgba(0, 0, 0, 0.02)';
         }}
         extra={
           <Button
@@ -2110,7 +2348,7 @@ export function Popup(): React.ReactElement {
                         const displaySymbol = rawSymbol.length > 0 ? rawSymbol : normalizedSymbol;
 
                         return (
-                          <Space size="small" align="center">
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                             {tokenInfo?.iconUrl && (
                               <img
                                 src={tokenInfo.iconUrl}
@@ -2120,6 +2358,7 @@ export function Popup(): React.ReactElement {
                                   height: 16,
                                   borderRadius: '50%',
                                   objectFit: 'cover',
+                                  flex: '0 0 16px',
                                 }}
                               />
                             )}
@@ -2128,6 +2367,9 @@ export function Popup(): React.ReactElement {
                               style={{
                                 fontSize: 12,
                                 color: record.completed ? '#8c8c8c' : '#262626',
+                                lineHeight: '16px',
+                                display: 'inline-flex',
+                                alignItems: 'center',
                               }}
                             >
                               {displaySymbol}
@@ -2137,7 +2379,7 @@ export function Popup(): React.ReactElement {
                             {record.completed && (
                               <CheckCircleOutlined style={{ color: '#52c41a', fontSize: 12 }} />
                             )}
-                          </Space>
+                          </div>
                         );
                       },
                     },
@@ -2243,7 +2485,7 @@ export function Popup(): React.ReactElement {
                         const displaySymbol = rawSymbol.length > 0 ? rawSymbol : normalizedSymbol;
 
                         return (
-                          <Space size="small" align="center">
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                             {tokenInfo?.iconUrl && (
                               <img
                                 src={tokenInfo.iconUrl}
@@ -2253,15 +2495,25 @@ export function Popup(): React.ReactElement {
                                   height: 16,
                                   borderRadius: '50%',
                                   objectFit: 'cover',
+                                  flex: '0 0 16px',
                                 }}
                               />
                             )}
-                            <Text strong style={{ fontSize: 12, color: '#1890ff' }}>
+                            <Text
+                              strong
+                              style={{
+                                fontSize: 12,
+                                color: '#1890ff',
+                                lineHeight: '16px',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                              }}
+                            >
                               {displaySymbol}
                               {record.phase && record.phase > 1 && `-${record.phase}`}
                               {record.type === 'tge' && ' (TGE)'}
                             </Text>
-                          </Space>
+                          </div>
                         );
                       },
                     },

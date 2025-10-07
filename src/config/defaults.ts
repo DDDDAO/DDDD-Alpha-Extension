@@ -11,9 +11,9 @@ export const DEFAULT_BUY_PRICE_OFFSET_PERCENT = DEFAULT_PRICE_OFFSET_PERCENT;
 export const DEFAULT_SELL_PRICE_OFFSET_PERCENT = -0.01;
 export const DEFAULT_POINTS_FACTOR = 1;
 export const DEFAULT_POINTS_TARGET = 15;
-export const MAX_SUCCESSFUL_TRADES = 100;
+export const MAX_SUCCESSFUL_TRADES = 500;
 export const SUCCESSFUL_TRADES_LIMIT_MESSAGE =
-  '系统目前只支持最多100次买入交易,如需更多交易次数,请加入社区联系管理员.';
+  '系统目前只支持最多500次买入交易,如需更多交易次数,请加入社区联系管理员.';
 
 export function resolveTargetUrl(tokenAddress?: string): string {
   const normalizedAddress = tokenAddress?.trim() || DEFAULT_TOKEN_ADDRESS;

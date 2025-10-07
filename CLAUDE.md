@@ -1,0 +1,1 @@
+- run npm run build to build new extension content after any code is updated.

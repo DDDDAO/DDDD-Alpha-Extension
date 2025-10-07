@@ -50,13 +50,11 @@ initAirdropMonitor();
 
 chrome.runtime.onInstalled.addListener(() => {
   void bootstrapScheduler();
-  void registerHeaderModificationRules();
   initAirdropMonitor();
 });
 
 chrome.runtime.onStartup.addListener(() => {
   void bootstrapScheduler();
-  void registerHeaderModificationRules();
   initAirdropMonitor();
 });
 

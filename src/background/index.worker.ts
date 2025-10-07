@@ -227,11 +227,13 @@ chrome.runtime.onMessage.addListener((message: RuntimeMessage, _sender, sendResp
       return {
         ...state,
         isEnabled: shouldAutoStop ? false : state.isEnabled,
+        isRunning: shouldAutoStop ? false : state.isRunning,
         lastError: shouldAutoStop ? undefined : state.lastError,
         tokenSymbol: resolvedTokenSymbol,
         dailyBuyVolume: nextDaily,
         lastResult: nextLastResult,
         requiresLogin: false,
+        sessionStoppedAt: shouldAutoStop ? timestamp : state.sessionStoppedAt,
       };
     });
 

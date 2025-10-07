@@ -458,7 +458,7 @@ export function Popup(): React.ReactElement {
         const retryResult = await chrome.storage.local.get(AIRDROP_STORAGE_KEY);
         const retryData = retryResult[AIRDROP_STORAGE_KEY];
 
-        if (retryData && retryData.today) {
+        if (retryData?.today) {
           setAirdropToday(retryData.today);
           setAirdropForecast(retryData.forecast || []);
           console.log('[Popup] ✅ 数据加载成功（重试）');

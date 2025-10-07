@@ -31,7 +31,9 @@ import React, { useCallback, useEffect, useId, useMemo, useRef, useState } from 
 import { useTranslation } from 'react-i18next';
 import {
   DEFAULT_BUY_PRICE_OFFSET_PERCENT,
+  DEFAULT_INTERVAL_MODE,
   DEFAULT_SELL_PRICE_OFFSET_PERCENT,
+  type IntervalMode,
   MAX_SUCCESSFUL_TRADES,
   SUCCESSFUL_TRADES_LIMIT_MESSAGE,
 } from '../config/defaults.js';
@@ -249,6 +251,7 @@ export function Popup(): React.ReactElement {
   const [controlsBusy, setControlsBusy] = useState(false);
   const [resettingInitialBalance, setResettingInitialBalance] = useState(false);
   const [priceOffsetMode, setPriceOffsetMode] = useState<PriceOffsetMode>('sideways');
+  const [intervalMode, setIntervalMode] = useState<IntervalMode>(DEFAULT_INTERVAL_MODE);
   const [buyPriceOffset, setBuyPriceOffset] = useState('0.01');
   const [sellPriceOffset, setSellPriceOffset] = useState('-0.01');
   const [localPointsFactor, setLocalPointsFactor] = useState('1');
@@ -510,7 +513,12 @@ export function Popup(): React.ReactElement {
   // Load initial state
   const loadState = useCallback(async (): Promise<void> => {
     const result = await chrome.storage.local.get(STORAGE_KEY);
-    setState(result[STORAGE_KEY] ?? null);
+    const loadedState = result[STORAGE_KEY] ?? null;
+    console.log(
+      '[Popup] loadState - intervalMode from storage:',
+      loadedState?.settings?.intervalMode,
+    );
+    setState(loadedState);
   }, []);
 
   const refreshActiveTab = useCallback(async (): Promise<void> => {
@@ -819,8 +827,10 @@ export function Popup(): React.ReactElement {
       sellPriceOffset?: number;
       pointsFactor?: number;
       pointsTarget?: number;
+      intervalMode?: IntervalMode;
     }): Promise<void> => {
       const task = async (): Promise<void> => {
+        console.log('[Popup] persistSchedulerSettings - patch:', settingsPatch);
         let baseState = state;
 
         if (!baseState) {
@@ -836,6 +846,7 @@ export function Popup(): React.ReactElement {
               tokenAddress: BUILTIN_DEFAULT_TOKEN_ADDRESS,
               pointsFactor: DEFAULT_POINTS_FACTOR,
               pointsTarget: DEFAULT_POINTS_TARGET,
+              intervalMode: DEFAULT_INTERVAL_MODE,
             },
             requiresLogin: false,
           };
@@ -852,6 +863,7 @@ export function Popup(): React.ReactElement {
             tokenAddress: BUILTIN_DEFAULT_TOKEN_ADDRESS,
             pointsFactor: DEFAULT_POINTS_FACTOR,
             pointsTarget: DEFAULT_POINTS_TARGET,
+            intervalMode: DEFAULT_INTERVAL_MODE,
           },
           lastRun: baseState.lastRun,
           lastError: baseState.lastError,
@@ -871,6 +883,7 @@ export function Popup(): React.ReactElement {
           tokenAddress: BUILTIN_DEFAULT_TOKEN_ADDRESS,
           pointsFactor: DEFAULT_POINTS_FACTOR,
           pointsTarget: DEFAULT_POINTS_TARGET,
+          intervalMode: DEFAULT_INTERVAL_MODE,
           ...(normalizedBaseState.settings ?? {}),
         };
 
@@ -884,10 +897,15 @@ export function Popup(): React.ReactElement {
             tokenAddress: baseSettings.tokenAddress,
             pointsFactor: baseSettings.pointsFactor,
             pointsTarget: baseSettings.pointsTarget,
+            intervalMode: baseSettings.intervalMode,
             ...settingsPatch,
           },
         };
 
+        console.log(
+          '[Popup] persistSchedulerSettings - saving intervalMode:',
+          nextState.settings.intervalMode,
+        );
         await chrome.storage.local.set({ [STORAGE_KEY]: nextState });
         setState(nextState);
       };
@@ -975,12 +993,20 @@ export function Popup(): React.ReactElement {
   // Sync local input values with state, but not during active editing
   useEffect(() => {
     const mode = state?.settings?.priceOffsetMode ?? 'sideways';
+    const interval = state?.settings?.intervalMode ?? DEFAULT_INTERVAL_MODE;
     const buyOffset = state?.settings?.buyPriceOffset ?? DEFAULT_BUY_PRICE_OFFSET_PERCENT;
     const sellOffset = state?.settings?.sellPriceOffset ?? DEFAULT_SELL_PRICE_OFFSET_PERCENT;
     const factor = getPointsFactor(state);
     const target = getPointsTarget(state);
 
+    console.log(
+      '[Popup] Syncing interval mode from state:',
+      interval,
+      'full state:',
+      state?.settings,
+    );
     setPriceOffsetMode(mode);
+    setIntervalMode(interval);
 
     if (!isEditingBuyPriceOffset.current) {
       setBuyPriceOffset(formatSpreadInputValue(buyOffset));
@@ -1725,21 +1751,25 @@ export function Popup(): React.ReactElement {
               disabled={controlsBusy}
               style={{ width: '100%', marginBottom: 12 }}
             >
-              <Space direction="vertical" size="small" style={{ width: '100%' }}>
+              <Space
+                direction="horizontal"
+                size="middle"
+                style={{ width: '100%', flexWrap: 'wrap' }}
+              >
                 <Radio value="bullish">
                   <Space size={6}>
                     <span>{t('settings.bullishMode')}</span>
-                    <Text type="secondary" style={{ fontSize: 11 }}>
-                      {t('settings.bullishModeDesc')}
-                    </Text>
+                    <Tooltip title={t('settings.bullishModeDesc')}>
+                      <InfoCircleOutlined style={{ color: '#1890ff' }} />
+                    </Tooltip>
                   </Space>
                 </Radio>
                 <Radio value="sideways">
                   <Space size={6}>
                     <span>{t('settings.sidewaysMode')}</span>
-                    <Text type="secondary" style={{ fontSize: 11 }}>
-                      {t('settings.sidewaysModeDesc')}
-                    </Text>
+                    <Tooltip title={t('settings.sidewaysModeDesc')}>
+                      <InfoCircleOutlined style={{ color: '#1890ff' }} />
+                    </Tooltip>
                   </Space>
                 </Radio>
                 <Radio value="custom">{t('settings.customMode')}</Radio>
@@ -1747,8 +1777,8 @@ export function Popup(): React.ReactElement {
             </Radio.Group>
 
             {priceOffsetMode === 'custom' && (
-              <Space direction="vertical" size={12} style={{ width: '100%', marginTop: 12 }}>
-                <div>
+              <Row gutter={12} style={{ marginTop: 12 }}>
+                <Col span={12}>
                   <Text
                     type="secondary"
                     style={{ fontSize: 13, fontWeight: 500, display: 'block', marginBottom: 8 }}
@@ -1788,8 +1818,8 @@ export function Popup(): React.ReactElement {
                     stringMode={false}
                     style={{ width: '100%' }}
                   />
-                </div>
-                <div>
+                </Col>
+                <Col span={12}>
                   <Text
                     type="secondary"
                     style={{ fontSize: 13, fontWeight: 500, display: 'block', marginBottom: 8 }}
@@ -1829,75 +1859,120 @@ export function Popup(): React.ReactElement {
                     stringMode={false}
                     style={{ width: '100%' }}
                   />
-                </div>
-              </Space>
+                </Col>
+              </Row>
             )}
           </div>
 
           <div>
-            <Space size={6} style={{ marginBottom: 8 }}>
+            <Space size={6} style={{ marginBottom: 12 }}>
               <Text type="secondary" style={{ fontSize: 13, fontWeight: 500 }}>
-                {t('settings.pointsFactor')}
+                {t('settings.intervalMode')}
               </Text>
-              <Tooltip title={t('settings.pointsFactorTooltip')}>
+              <Tooltip title={t('settings.intervalModeTooltip')}>
                 <InfoCircleOutlined style={{ color: '#1890ff' }} />
               </Tooltip>
             </Space>
-            <InputNumber
-              id={pointsFactorId}
-              min={1}
-              max={1000}
-              step={1}
-              placeholder="1"
-              value={Number.parseFloat(localPointsFactor)}
-              onChange={(value) => {
-                if (isPointsFactorLocked) {
-                  return;
-                }
-                isEditingPointsFactor.current = true;
-                setLocalPointsFactor(String(value ?? 1));
-              }}
-              onBlur={(e) => void handlePointsFactorChange(e.target.value)}
-              onPressEnter={(e) => {
-                e.preventDefault();
-                (e.target as HTMLInputElement).blur();
-              }}
-              disabled={controlsBusy || isPointsFactorLocked}
-              title="每次成功订单后应用于记录买入量的乘数"
-              style={{ width: '100%' }}
-            />
-          </div>
-
-          <div>
-            <Space size={6} style={{ marginBottom: 8 }}>
-              <Text type="secondary" style={{ fontSize: 13, fontWeight: 500 }}>
-                {t('settings.pointsTarget')}
-              </Text>
-              <Tooltip title={t('settings.pointsTargetTooltip')}>
-                <InfoCircleOutlined style={{ color: '#1890ff' }} />
-              </Tooltip>
-            </Space>
-            <InputNumber
-              id={pointsTargetId}
-              min={1}
-              max={1000}
-              step={1}
-              placeholder="15"
-              value={Number.parseFloat(localPointsTarget)}
-              onChange={(value) => {
-                isEditingPointsTarget.current = true;
-                setLocalPointsTarget(String(value ?? 15));
-              }}
-              onBlur={(e) => void handlePointsTargetChange(e.target.value)}
-              onPressEnter={(e) => {
-                e.preventDefault();
-                (e.target as HTMLInputElement).blur();
+            <Radio.Group
+              value={intervalMode}
+              onChange={(e) => {
+                const mode = e.target.value as IntervalMode;
+                console.log('[Popup] Interval mode changed to:', mode);
+                setIntervalMode(mode);
+                void persistSchedulerSettings({
+                  intervalMode: mode,
+                });
               }}
               disabled={controlsBusy}
-              title="当今日 alpha 积分超过此阈值时停止自动化"
               style={{ width: '100%' }}
-            />
+            >
+              <Space direction="horizontal" size="middle" style={{ width: '100%' }}>
+                <Radio value="fast">
+                  <Space size={6}>
+                    <span>{t('settings.fastMode')}</span>
+                    <Text type="secondary" style={{ fontSize: 11 }}>
+                      {t('settings.fastModeDesc')}
+                    </Text>
+                  </Space>
+                </Radio>
+                <Radio value="medium">
+                  <Space size={6}>
+                    <span>{t('settings.mediumMode')}</span>
+                    <Text type="secondary" style={{ fontSize: 11 }}>
+                      {t('settings.mediumModeDesc')}
+                    </Text>
+                  </Space>
+                </Radio>
+              </Space>
+            </Radio.Group>
           </div>
+
+          <Row gutter={12}>
+            <Col span={12}>
+              <Space size={6} style={{ marginBottom: 8 }}>
+                <Text type="secondary" style={{ fontSize: 13, fontWeight: 500 }}>
+                  {t('settings.pointsTarget')}
+                </Text>
+                <Tooltip title={t('settings.pointsTargetTooltip')}>
+                  <InfoCircleOutlined style={{ color: '#1890ff' }} />
+                </Tooltip>
+              </Space>
+              <InputNumber
+                id={pointsTargetId}
+                min={1}
+                max={1000}
+                step={1}
+                placeholder="15"
+                value={Number.parseFloat(localPointsTarget)}
+                onChange={(value) => {
+                  isEditingPointsTarget.current = true;
+                  setLocalPointsTarget(String(value ?? 15));
+                }}
+                onBlur={(e) => void handlePointsTargetChange(e.target.value)}
+                onPressEnter={(e) => {
+                  e.preventDefault();
+                  (e.target as HTMLInputElement).blur();
+                }}
+                disabled={controlsBusy}
+                title="当今日 alpha 积分超过此阈值时停止自动化"
+                style={{ width: '100%' }}
+              />
+            </Col>
+
+            <Col span={12}>
+              <Space size={6} style={{ marginBottom: 8 }}>
+                <Text type="secondary" style={{ fontSize: 13, fontWeight: 500 }}>
+                  {t('settings.pointsFactor')}
+                </Text>
+                <Tooltip title={t('settings.pointsFactorTooltip')}>
+                  <InfoCircleOutlined style={{ color: '#1890ff' }} />
+                </Tooltip>
+              </Space>
+              <InputNumber
+                id={pointsFactorId}
+                min={1}
+                max={1000}
+                step={1}
+                placeholder="1"
+                value={Number.parseFloat(localPointsFactor)}
+                onChange={(value) => {
+                  if (isPointsFactorLocked) {
+                    return;
+                  }
+                  isEditingPointsFactor.current = true;
+                  setLocalPointsFactor(String(value ?? 1));
+                }}
+                onBlur={(e) => void handlePointsFactorChange(e.target.value)}
+                onPressEnter={(e) => {
+                  e.preventDefault();
+                  (e.target as HTMLInputElement).blur();
+                }}
+                disabled={controlsBusy || isPointsFactorLocked}
+                title="每次成功订单后应用于记录买入量的乘数"
+                style={{ width: '100%' }}
+              />
+            </Col>
+          </Row>
         </Space>
       </Card>
 
@@ -2197,7 +2272,7 @@ export function Popup(): React.ReactElement {
                 valueStyle={{ fontSize: 14 }}
               />
             </Col>
-            <Col span={24}>
+            <Col span={12}>
               <Statistic
                 title={
                   <Space size={6}>

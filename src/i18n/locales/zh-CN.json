@@ -29,7 +29,13 @@
     "bullishModeDesc": "(买入: +0.05%, 卖出: 0.00%)",
     "sidewaysMode": "横盘模式",
     "sidewaysModeDesc": "(买入: +0.01%, 卖出: -0.01%)",
-    "customMode": "自定义"
+    "customMode": "自定义",
+    "intervalMode": "交易间隔",
+    "intervalModeTooltip": "控制两次订单之间的等待时间。快速模式:1-3秒随机延迟,适合快速刷单;中等模式:5-10秒随机延迟,更像真人操作。",
+    "fastMode": "快速模式",
+    "fastModeDesc": "(1-3秒)",
+    "mediumMode": "中等模式",
+    "mediumModeDesc": "(5-10秒)"
   },
   "controls": {
     "start": "启动",

@@ -1,8 +1,10 @@
 import {
   DEFAULT_AUTOMATION,
+  DEFAULT_BUY_PRICE_OFFSET_PERCENT,
   DEFAULT_POINTS_FACTOR,
   DEFAULT_POINTS_TARGET,
   DEFAULT_PRICE_OFFSET_PERCENT,
+  DEFAULT_SELL_PRICE_OFFSET_PERCENT,
 } from '../config/defaults.js';
 import { STORAGE_KEY } from '../config/storageKey.js';
 
@@ -55,8 +57,8 @@ export interface SchedulerState {
 const DEFAULT_SETTINGS: SchedulerSettings = {
   priceOffsetPercent: DEFAULT_PRICE_OFFSET_PERCENT,
   priceOffsetMode: 'sideways',
-  buyPriceOffset: 0.01,
-  sellPriceOffset: 0.01,
+  buyPriceOffset: DEFAULT_BUY_PRICE_OFFSET_PERCENT,
+  sellPriceOffset: DEFAULT_SELL_PRICE_OFFSET_PERCENT,
   tokenAddress: DEFAULT_AUTOMATION.tokenAddress,
   pointsFactor: DEFAULT_POINTS_FACTOR,
   pointsTarget: DEFAULT_POINTS_TARGET,
@@ -89,15 +91,18 @@ export async function getSchedulerState(): Promise<SchedulerState> {
       const settings: SchedulerSettings = {
         priceOffsetPercent: normalizePriceOffsetPercent(
           storedSettings.priceOffsetPercent ?? DEFAULT_SETTINGS.priceOffsetPercent,
+          DEFAULT_SETTINGS.priceOffsetPercent,
         ),
         priceOffsetMode: normalizePriceOffsetMode(
           storedSettings.priceOffsetMode ?? DEFAULT_SETTINGS.priceOffsetMode,
         ),
         buyPriceOffset: normalizePriceOffsetPercent(
           storedSettings.buyPriceOffset ?? DEFAULT_SETTINGS.buyPriceOffset,
+          DEFAULT_SETTINGS.buyPriceOffset,
         ),
         sellPriceOffset: normalizePriceOffsetPercent(
           storedSettings.sellPriceOffset ?? DEFAULT_SETTINGS.sellPriceOffset,
+          DEFAULT_SETTINGS.sellPriceOffset,
         ),
         tokenAddress: normalizeTokenAddress(
           storedSettings.tokenAddress ?? DEFAULT_SETTINGS.tokenAddress,
@@ -129,14 +134,14 @@ function normalizePriceOffsetMode(value: unknown): PriceOffsetMode {
   return DEFAULT_SETTINGS.priceOffsetMode;
 }
 
-function normalizePriceOffsetPercent(value: unknown): number {
+function normalizePriceOffsetPercent(value: unknown, fallback: number): number {
   if (typeof value === 'number' && Number.isFinite(value)) {
     return clamp(value);
   }
 
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) {
-    return DEFAULT_SETTINGS.priceOffsetPercent;
+    return clamp(fallback);
   }
 
   return clamp(parsed);

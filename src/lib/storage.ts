@@ -1,10 +1,12 @@
 import {
   DEFAULT_AUTOMATION,
   DEFAULT_BUY_PRICE_OFFSET_PERCENT,
+  DEFAULT_INTERVAL_MODE,
   DEFAULT_POINTS_FACTOR,
   DEFAULT_POINTS_TARGET,
   DEFAULT_PRICE_OFFSET_PERCENT,
   DEFAULT_SELL_PRICE_OFFSET_PERCENT,
+  type IntervalMode,
 } from '../config/defaults.js';
 import { STORAGE_KEY } from '../config/storageKey.js';
 
@@ -31,6 +33,7 @@ export interface SchedulerSettings {
   tokenAddress: string;
   pointsFactor: number;
   pointsTarget: number;
+  intervalMode: IntervalMode;
 }
 
 export interface SchedulerState {
@@ -62,6 +65,7 @@ const DEFAULT_SETTINGS: SchedulerSettings = {
   tokenAddress: DEFAULT_AUTOMATION.tokenAddress,
   pointsFactor: DEFAULT_POINTS_FACTOR,
   pointsTarget: DEFAULT_POINTS_TARGET,
+  intervalMode: DEFAULT_INTERVAL_MODE,
 };
 
 const MIN_PRICE_OFFSET_PERCENT = -5;
@@ -113,6 +117,9 @@ export async function getSchedulerState(): Promise<SchedulerState> {
         pointsTarget: normalizePointsTarget(
           storedSettings.pointsTarget ?? DEFAULT_SETTINGS.pointsTarget,
         ),
+        intervalMode: normalizeIntervalMode(
+          storedSettings.intervalMode ?? DEFAULT_SETTINGS.intervalMode,
+        ),
       };
 
       resolve({
@@ -132,6 +139,13 @@ function normalizePriceOffsetMode(value: unknown): PriceOffsetMode {
     return value;
   }
   return DEFAULT_SETTINGS.priceOffsetMode;
+}
+
+function normalizeIntervalMode(value: unknown): IntervalMode {
+  if (value === 'fast' || value === 'medium') {
+    return value;
+  }
+  return DEFAULT_SETTINGS.intervalMode;
 }
 
 function normalizePriceOffsetPercent(value: unknown, fallback: number): number {

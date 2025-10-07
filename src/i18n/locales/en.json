@@ -16,7 +16,7 @@
     "multiplier": "x"
   },
   "settings": {
-    "title": "Settings",
+    "title": "Automation Settings",
     "priceOffset": "Price Offset (%)",
     "priceOffsetTooltip": "The tool automatically refreshes the average price and places orders with the price offset setting. Positive values (+1%) add 1% to the base price, negative values (-1%) subtract 1% from the base price. Sideways mode (buy +0.01%, sell -0.01%) is suitable for stable prices; Bullish mode (buy +0.01%, sell +0.02%) is suitable for rising prices; Custom mode supports flexible configuration from -5% to +5%.",
     "buyPriceOffset": "Buy Price Offset (%)",
@@ -80,11 +80,14 @@
     "forecast": "Upcoming Airdrops",
     "tge": "TGE",
     "grab": "Flash",
-    "quantity": "Airdrop Quantity",
-    "threshold": "Points Threshold",
+    "quantity": "Quantity",
+    "threshold": "Points",
     "phase": "Phase",
     "phaseLabel": "Phase",
-    "tomorrow": "Tomorrow"
+    "tomorrow": "Tomorrow",
+    "symbol": "Symbol",
+    "time": "Time",
+    "price": "Price"
   },
   "footer": {
     "madeBy": "Made with ❤️ by",

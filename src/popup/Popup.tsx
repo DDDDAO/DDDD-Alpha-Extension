@@ -8,6 +8,7 @@ import {
   PlayCircleOutlined,
   ReloadOutlined,
   SyncOutlined,
+  ThunderboltOutlined,
   TrophyOutlined,
 } from '@ant-design/icons';
 import {
@@ -21,6 +22,7 @@ import {
   Row,
   Space,
   Statistic,
+  Table,
   Tag,
   Tooltip,
   Typography,
@@ -416,13 +418,16 @@ export function Popup(): React.ReactElement {
       }
       const data: StabilityFeed = await response.json();
 
-      // 筛选：只保留稳定性为"stable"的币种，完全移除"moderate"和"unstable"
+      // 筛选：只保留稳定性为"stable"的币种，完全移除"moderate"和"unstable"，并排除KOGE
       const filtered = data.items
         .filter((item) => {
           // 只保留稳定性为 "green:stable" 的币种
           const isStable = item.st === 'green:stable';
           const isLowSpread = item.spr <= MAX_SPREAD_THRESHOLD;
-          return isStable && isLowSpread;
+          // 排除KOGE币种
+          const coinSymbol = item.n.replace('/USDT', '').trim().toUpperCase();
+          const isNotKOGE = coinSymbol !== 'KOGE';
+          return isStable && isLowSpread && isNotKOGE;
         })
         .sort((a, b) => a.spr - b.spr) // 按价差从小到大排序
         .slice(0, 5); // 最多显示5个
@@ -1228,9 +1233,9 @@ export function Popup(): React.ReactElement {
   return (
     <div
       style={{
-        width: 420,
-        padding: 16,
-        background: 'linear-gradient(180deg, #f0f4f8 0%, #e2e8f0 100%)',
+        width: 440,
+        padding: '20px 18px',
+        background: '#f5f7fa',
         minHeight: 600,
       }}
     >
@@ -1238,18 +1243,18 @@ export function Popup(): React.ReactElement {
         bordered={false}
         style={{
           marginBottom: 16,
-          borderRadius: 12,
-          boxShadow: '0 4px 16px rgba(0,0,0,0.08)',
-          background: 'linear-gradient(135deg, #ffffff 0%, #f8fafc 100%)',
+          borderRadius: 16,
+          boxShadow: '0 2px 12px rgba(0, 0, 0, 0.06)',
+          background: '#ffffff',
         }}
       >
-        <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+        <Space direction="vertical" size={12} style={{ width: '100%' }}>
           <div
             style={{
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'space-between',
-              marginBottom: 8,
+              marginBottom: 12,
             }}
           >
             <div style={{ flex: 1 }} />
@@ -1257,22 +1262,36 @@ export function Popup(): React.ReactElement {
               style={{
                 display: 'flex',
                 alignItems: 'center',
-                gap: '12px',
+                gap: '14px',
               }}
             >
               <img
                 src={POPUP_LOGO_URL}
                 alt="Logo"
-                style={{ width: '32px', height: '32px', display: 'block' }}
+                style={{ width: '36px', height: '36px', display: 'block' }}
               />
-              <Title level={3} style={{ color: '#0DA2FF', margin: 0 }}>
+              <Title
+                level={3}
+                style={{ color: '#1890ff', margin: 0, fontSize: '18px', fontWeight: 600 }}
+              >
                 {t('app.title')}
               </Title>
               <Link href="https://t.me/ddddao2025" target="_blank" rel="noopener noreferrer">
                 <img
                   src={TG_LOGO_URL}
                   alt="Telegram"
-                  style={{ width: '24px', height: '24px', display: 'block' }}
+                  style={{
+                    width: '26px',
+                    height: '26px',
+                    display: 'block',
+                    transition: 'transform 0.2s',
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.transform = 'scale(1.1)';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.transform = 'scale(1)';
+                  }}
                 />
               </Link>
             </div>
@@ -1290,26 +1309,30 @@ export function Popup(): React.ReactElement {
               }}
               message={t('plugin.title')}
               description={
-                <Space direction="vertical" size={6} style={{ fontSize: 12 }}>
-                  <Text style={{ fontSize: 12, color: '#4a4f55' }}>{t('plugin.desc1')}</Text>
-                  <Text style={{ fontSize: 12, color: '#4a4f55' }}>{t('plugin.desc2')}</Text>
+                <Space direction="vertical" size={8} style={{ fontSize: 13 }}>
+                  <Text style={{ fontSize: 13, color: '#595959', lineHeight: 1.6 }}>
+                    {t('plugin.desc1')}
+                  </Text>
+                  <Text style={{ fontSize: 13, color: '#595959', lineHeight: 1.6 }}>
+                    {t('plugin.desc2')}
+                  </Text>
                   <Link href={GITHUB_REPO_URL} target="_blank" rel="noopener noreferrer">
-                    <Space size={6} align="center">
+                    <Space size={8} align="center">
                       <img
                         src={GITHUB_MARK_URL}
                         alt="GitHub"
-                        style={{ width: 16, height: 16, display: 'block' }}
+                        style={{ width: 18, height: 18, display: 'block' }}
                       />
-                      <span style={{ fontSize: 12 }}>{t('plugin.viewGithub')}</span>
+                      <span style={{ fontSize: 13 }}>{t('plugin.viewGithub')}</span>
                     </Space>
                   </Link>
                 </Space>
               }
               style={{
-                marginBottom: 8,
-                borderRadius: 8,
-                border: '1px solid #91d5ff',
-                background: 'linear-gradient(135deg, #e6f7ff 0%, #f0f9ff 100%)',
+                marginBottom: 12,
+                borderRadius: 12,
+                border: '1px solid #91caff',
+                background: '#e6f4ff',
               }}
             />
           )}
@@ -1321,211 +1344,259 @@ export function Popup(): React.ReactElement {
               message={t('orderHistory.error')}
               description={orderHistoryError}
               style={{
-                marginBottom: 8,
-                borderRadius: 8,
-                border: '1px solid #ffccc7',
-                background: 'linear-gradient(135deg, #fff1f0 0%, #fff2f0 100%)',
+                marginBottom: 12,
+                borderRadius: 12,
+                border: '1px solid #ffa39e',
+                background: '#fff1f0',
               }}
             />
           ) : null}
 
-          <Card
-            title={
-              <Space>
-                <CheckCircleOutlined style={{ color: '#52c41a' }} />
-                <span style={{ fontWeight: 600 }}>{t('stability.title')}</span>
-              </Space>
-            }
-            bordered={false}
-            size="small"
-            style={{
-              marginBottom: 8,
-              borderRadius: 10,
-              boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
-              background: 'linear-gradient(135deg, #f6ffed 0%, #fcffe6 100%)',
-            }}
-          >
-            {stabilityLoading ? (
-              <Text type="secondary" style={{ fontSize: 12 }}>
-                {t('stability.loading')}
-              </Text>
-            ) : stableCoins.length > 0 ? (
-              <List
+          <Row gutter={[16, 16]}>
+            <Col span={12}>
+              <Card
+                title={
+                  <Space size={6}>
+                    <CheckCircleOutlined style={{ color: '#52c41a', fontSize: 16 }} />
+                    <span style={{ fontWeight: 600, fontSize: 14 }}>{t('stability.title')}</span>
+                  </Space>
+                }
+                bordered={false}
                 size="small"
-                dataSource={stableCoins}
-                renderItem={(item) => {
-                  const coinSymbol = item.n.replace('/USDT', '').trim();
-                  const normalizedSymbol = coinSymbol.toUpperCase();
-                  const tokenInfo = tokenDirectory[normalizedSymbol];
-                  const url = tokenInfo?.contractAddress
-                    ? getBinanceAlphaUrl(tokenInfo.contractAddress)
-                    : null;
-
-                  return (
-                    <List.Item style={{ padding: '4px 0', borderBottom: 'none' }}>
-                      <Space
-                        size="small"
-                        style={{ width: '100%', justifyContent: 'space-between' }}
-                      >
-                        <Space size="small" align="center">
-                          {tokenInfo?.iconUrl && (
-                            <img
-                              src={tokenInfo.iconUrl}
-                              alt={`${normalizedSymbol} icon`}
-                              style={{
-                                width: 16,
-                                height: 16,
-                                borderRadius: '50%',
-                                objectFit: 'cover',
-                              }}
-                            />
-                          )}
-                          {url ? (
-                            <a
-                              href={url}
-                              style={{
-                                color: '#1890ff',
-                                fontSize: 13,
-                                fontWeight: 600,
-                                textDecoration: 'none',
-                              }}
-                              onClick={(event) => {
-                                event.preventDefault();
-                                openUrlInActiveTab(url);
-                              }}
-                              onMouseEnter={(e) => {
-                                e.currentTarget.style.textDecoration = 'underline';
-                              }}
-                              onMouseLeave={(e) => {
-                                e.currentTarget.style.textDecoration = 'none';
-                              }}
-                            >
-                              {normalizedSymbol}
-                            </a>
-                          ) : (
-                            <Text strong style={{ fontSize: 13 }}>
-                              {normalizedSymbol}
-                            </Text>
-                          )}
-                          <Tag color="success" style={{ fontSize: 11, margin: 0 }}>
-                            {t('stability.stable')}
-                          </Tag>
-                          {item.md > 0 && (
-                            <Tag color="blue" style={{ fontSize: 11, margin: 0 }}>
-                              {t('stability.quad')}
-                            </Tag>
-                          )}
-                        </Space>
-                        <Space size="small">
-                          <Text type="secondary" style={{ fontSize: 11 }}>
-                            {t('stability.spread')}: {item.spr.toFixed(2)}
-                          </Text>
-                          <Text type="secondary" style={{ fontSize: 11 }}>
-                            {t('stability.days')}: {item.md}
-                          </Text>
-                        </Space>
-                      </Space>
-                    </List.Item>
-                  );
+                style={{
+                  height: '100%',
+                  borderRadius: 12,
+                  boxShadow: '0 1px 8px rgba(0,0,0,0.04)',
+                  background: '#f6ffed',
+                  border: '1px solid #b7eb8f',
                 }}
-              />
-            ) : (
-              <Text type="secondary" style={{ fontSize: 12 }}>
-                {t('stability.noData')}
-              </Text>
-            )}
-          </Card>
-
-          <Card
-            title={<span style={{ fontWeight: 600 }}>{t('token.currentToken')}</span>}
-            bordered={false}
-            size="small"
-            style={{
-              marginBottom: 8,
-              borderRadius: 10,
-              boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
-            }}
-          >
-            <Space direction="vertical" size="small" style={{ width: '100%' }}>
-              <div>
-                <Space size={8} align="center">
-                  {resolvedTokenInfo?.iconUrl && (
-                    <img
-                      src={resolvedTokenInfo.iconUrl}
-                      alt={`${resolvedSymbolDisplay} icon`}
-                      style={{
-                        width: 20,
-                        height: 20,
-                        borderRadius: '50%',
-                        objectFit: 'cover',
-                      }}
-                    />
-                  )}
-                  <Text strong style={{ fontSize: 16 }}>
-                    {resolvedSymbolDisplay}
+              >
+                {stabilityLoading ? (
+                  <Text type="secondary" style={{ fontSize: 11 }}>
+                    {t('stability.loading')}
                   </Text>
-                </Space>
-              </div>
-              <Text type="secondary" style={{ fontSize: 12, wordBreak: 'break-all' }}>
-                {activeTab.tokenAddress || t('token.noTokenSelected')}
-              </Text>
-              {isPointsFactorLocked && sanitizedPointsFactorLockValue !== null && (
-                <Text type="secondary" style={{ fontSize: 12 }}>
-                  {t('token.pointsMultiplier')}: {sanitizedPointsFactorLockValue}{' '}
-                  {t('token.multiplier')}
-                </Text>
-              )}
-              {snapshot?.averagePrice && (
-                <div
-                  style={{
-                    marginTop: 8,
-                    padding: '8px 12px',
-                    background: '#f0f5ff',
-                    borderRadius: 4,
-                    border: '1px solid #adc6ff',
-                  }}
-                >
-                  <Space direction="vertical" size={2} style={{ width: '100%' }}>
+                ) : stableCoins.length > 0 ? (
+                  <List
+                    size="small"
+                    dataSource={stableCoins.slice(0, 3)}
+                    renderItem={(item) => {
+                      const coinSymbol = item.n.replace('/USDT', '').trim();
+                      const normalizedSymbol = coinSymbol.toUpperCase();
+                      const tokenInfo = tokenDirectory[normalizedSymbol];
+                      const url = tokenInfo?.contractAddress
+                        ? getBinanceAlphaUrl(tokenInfo.contractAddress)
+                        : null;
+
+                      return (
+                        <List.Item style={{ padding: '3px 0', borderBottom: 'none' }}>
+                          <Space
+                            size="small"
+                            direction="vertical"
+                            style={{ width: '100%', gap: 2 }}
+                          >
+                            <Space size="small" align="center">
+                              {tokenInfo?.iconUrl && (
+                                <img
+                                  src={tokenInfo.iconUrl}
+                                  alt={`${normalizedSymbol} icon`}
+                                  style={{
+                                    width: 14,
+                                    height: 14,
+                                    borderRadius: '50%',
+                                    objectFit: 'cover',
+                                  }}
+                                />
+                              )}
+                              {url ? (
+                                <a
+                                  href={url}
+                                  style={{
+                                    color: '#1890ff',
+                                    fontSize: 12,
+                                    fontWeight: 600,
+                                    textDecoration: 'none',
+                                  }}
+                                  onClick={(event) => {
+                                    event.preventDefault();
+                                    openUrlInActiveTab(url);
+                                  }}
+                                  onMouseEnter={(e) => {
+                                    e.currentTarget.style.textDecoration = 'underline';
+                                  }}
+                                  onMouseLeave={(e) => {
+                                    e.currentTarget.style.textDecoration = 'none';
+                                  }}
+                                >
+                                  {normalizedSymbol}
+                                </a>
+                              ) : (
+                                <Text strong style={{ fontSize: 12 }}>
+                                  {normalizedSymbol}
+                                </Text>
+                              )}
+                              {item.md > 0 && (
+                                <Tag color="blue" style={{ fontSize: 10, margin: 0 }}>
+                                  {t('stability.quad')}
+                                </Tag>
+                              )}
+                            </Space>
+                            <Space size="small">
+                              <Text type="secondary" style={{ fontSize: 10 }}>
+                                {t('stability.spread')}: {item.spr.toFixed(2)}
+                              </Text>
+                              <Text type="secondary" style={{ fontSize: 10 }}>
+                                {t('stability.days')}: {item.md}
+                              </Text>
+                            </Space>
+                          </Space>
+                        </List.Item>
+                      );
+                    }}
+                  />
+                ) : (
+                  <Text type="secondary" style={{ fontSize: 11 }}>
+                    {t('stability.noData')}
+                  </Text>
+                )}
+              </Card>
+            </Col>
+            <Col span={12}>
+              <Card
+                title={
+                  <span style={{ fontWeight: 600, fontSize: 14 }}>{t('token.currentToken')}</span>
+                }
+                bordered={false}
+                size="small"
+                style={{
+                  height: '100%',
+                  borderRadius: 12,
+                  boxShadow: '0 1px 8px rgba(0,0,0,0.04)',
+                  border: '1px solid #d9d9d9',
+                }}
+              >
+                <Space direction="vertical" size="small" style={{ width: '100%' }}>
+                  <div>
                     <Space size={6} align="center">
-                      <DollarOutlined style={{ color: '#1890ff', fontSize: 14 }} />
-                      <Text type="secondary" style={{ fontSize: 11 }}>
-                        {t('stats.averagePrice')}
+                      {resolvedTokenInfo?.iconUrl && (
+                        <img
+                          src={resolvedTokenInfo.iconUrl}
+                          alt={`${resolvedSymbolDisplay} icon`}
+                          style={{
+                            width: 18,
+                            height: 18,
+                            borderRadius: '50%',
+                            objectFit: 'cover',
+                          }}
+                        />
+                      )}
+                      <Text strong style={{ fontSize: 14 }}>
+                        {resolvedSymbolDisplay}
                       </Text>
                     </Space>
-                    <Text strong style={{ fontSize: 16, color: '#1890ff' }}>
-                      {formatNumber(snapshot.averagePrice, {
-                        minimumFractionDigits: 4,
-                        maximumFractionDigits: 8,
-                      })}
+                  </div>
+                  <Text type="secondary" style={{ fontSize: 11, wordBreak: 'break-all' }}>
+                    {activeTab.tokenAddress || t('token.noTokenSelected')}
+                  </Text>
+                  {isPointsFactorLocked && sanitizedPointsFactorLockValue !== null && (
+                    <Text type="secondary" style={{ fontSize: 11 }}>
+                      {t('token.pointsMultiplier')}: {sanitizedPointsFactorLockValue}{' '}
+                      {t('token.multiplier')}
                     </Text>
-                    {snapshot.timestamp && (
-                      <Text type="secondary" style={{ fontSize: 10 }}>
-                        {new Date(snapshot.timestamp).toLocaleTimeString(i18n.language)}
-                      </Text>
-                    )}
-                  </Space>
-                </div>
-              )}
-            </Space>
-          </Card>
+                  )}
+                  {snapshot?.averagePrice && (
+                    <div
+                      style={{
+                        marginTop: 6,
+                        padding: '6px 10px',
+                        background: '#f0f5ff',
+                        borderRadius: 4,
+                        border: '1px solid #adc6ff',
+                      }}
+                    >
+                      <Space direction="vertical" size={2} style={{ width: '100%' }}>
+                        <Space size={4} align="center">
+                          <DollarOutlined style={{ color: '#1890ff', fontSize: 12 }} />
+                          <Text type="secondary" style={{ fontSize: 10 }}>
+                            {t('stats.averagePrice')}
+                          </Text>
+                        </Space>
+                        <Text strong style={{ fontSize: 13, color: '#1890ff' }}>
+                          {formatNumber(snapshot.averagePrice, {
+                            minimumFractionDigits: 4,
+                            maximumFractionDigits: 8,
+                          })}
+                        </Text>
+                        {snapshot.timestamp && (
+                          <Text type="secondary" style={{ fontSize: 9 }}>
+                            {new Date(snapshot.timestamp).toLocaleTimeString(i18n.language)}
+                          </Text>
+                        )}
+                      </Space>
+                    </div>
+                  )}
+                </Space>
+              </Card>
+            </Col>
+          </Row>
         </Space>
       </Card>
 
       <Card
-        title={<span style={{ fontWeight: 600 }}>{t('settings.title')}</span>}
+        title={
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <Space size={10}>
+              <ThunderboltOutlined style={{ color: '#1890ff', fontSize: 18 }} />
+              <span style={{ fontWeight: 600, fontSize: 16, color: '#262626' }}>
+                {t('settings.title')}
+              </span>
+            </Space>
+            <Space size="small">
+              <Button
+                type="primary"
+                icon={<PlayCircleOutlined />}
+                loading={controlsBusy}
+                disabled={
+                  controlsBusy ||
+                  isEnabled ||
+                  !canOperate ||
+                  successfulTradeLimitReached ||
+                  loginRequired
+                }
+                onClick={() => void handleStart()}
+                size="middle"
+              >
+                {t('controls.start')}
+              </Button>
+              <Button
+                danger
+                icon={<PauseCircleOutlined />}
+                loading={controlsBusy}
+                disabled={controlsBusy || !isEnabled}
+                onClick={() => void handleStop()}
+                size="middle"
+              >
+                {t('controls.stop')}
+              </Button>
+            </Space>
+          </div>
+        }
         size="small"
         style={{
           marginBottom: 16,
-          borderRadius: 12,
-          boxShadow: '0 4px 12px rgba(0,0,0,0.08)',
+          borderRadius: 16,
+          boxShadow: '0 2px 12px rgba(0, 0, 0, 0.06)',
+          background: '#ffffff',
+          border: '1px solid #e8e8e8',
         }}
       >
-        <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+        <Space direction="vertical" size={16} style={{ width: '100%' }}>
           <div>
-            <Space size={6} style={{ marginBottom: 8 }}>
-              <Text type="secondary">{t('settings.priceOffset')}</Text>
+            <Space size={6} style={{ marginBottom: 12 }}>
+              <Text type="secondary" style={{ fontSize: 13, fontWeight: 500 }}>
+                {t('settings.priceOffset')}
+              </Text>
               <Tooltip title={t('settings.priceOffsetTooltip')}>
-                <InfoCircleOutlined style={{ color: '#1677ff' }} />
+                <InfoCircleOutlined style={{ color: '#1890ff' }} />
               </Tooltip>
             </Space>
             <Radio.Group
@@ -1575,9 +1646,12 @@ export function Popup(): React.ReactElement {
             </Radio.Group>
 
             {priceOffsetMode === 'custom' && (
-              <Space direction="vertical" size="small" style={{ width: '100%' }}>
+              <Space direction="vertical" size={12} style={{ width: '100%', marginTop: 12 }}>
                 <div>
-                  <Text type="secondary" style={{ fontSize: 12 }}>
+                  <Text
+                    type="secondary"
+                    style={{ fontSize: 13, fontWeight: 500, display: 'block', marginBottom: 8 }}
+                  >
                     {t('settings.buyPriceOffset')}
                   </Text>
                   <InputNumber
@@ -1611,7 +1685,10 @@ export function Popup(): React.ReactElement {
                   />
                 </div>
                 <div>
-                  <Text type="secondary" style={{ fontSize: 12 }}>
+                  <Text
+                    type="secondary"
+                    style={{ fontSize: 13, fontWeight: 500, display: 'block', marginBottom: 8 }}
+                  >
                     {t('settings.sellPriceOffset')}
                   </Text>
                   <InputNumber
@@ -1649,10 +1726,12 @@ export function Popup(): React.ReactElement {
           </div>
 
           <div>
-            <Space size={6}>
-              <Text type="secondary">{t('settings.pointsFactor')}</Text>
+            <Space size={6} style={{ marginBottom: 8 }}>
+              <Text type="secondary" style={{ fontSize: 13, fontWeight: 500 }}>
+                {t('settings.pointsFactor')}
+              </Text>
               <Tooltip title={t('settings.pointsFactorTooltip')}>
-                <InfoCircleOutlined style={{ color: '#1677ff' }} />
+                <InfoCircleOutlined style={{ color: '#1890ff' }} />
               </Tooltip>
             </Space>
             <InputNumber
@@ -1677,10 +1756,12 @@ export function Popup(): React.ReactElement {
           </div>
 
           <div>
-            <Space size={6}>
-              <Text type="secondary">{t('settings.pointsTarget')}</Text>
+            <Space size={6} style={{ marginBottom: 8 }}>
+              <Text type="secondary" style={{ fontSize: 13, fontWeight: 500 }}>
+                {t('settings.pointsTarget')}
+              </Text>
               <Tooltip title={t('settings.pointsTargetTooltip')}>
-                <InfoCircleOutlined style={{ color: '#1677ff' }} />
+                <InfoCircleOutlined style={{ color: '#1890ff' }} />
               </Tooltip>
             </Space>
             <InputNumber
@@ -1703,36 +1784,7 @@ export function Popup(): React.ReactElement {
         </Space>
       </Card>
 
-      <Space direction="vertical" size="small" style={{ width: '100%', marginBottom: 16 }}>
-        <Space size="small" style={{ width: '100%', justifyContent: 'center' }}>
-          <Button
-            type="primary"
-            icon={<PlayCircleOutlined />}
-            loading={controlsBusy}
-            disabled={
-              controlsBusy ||
-              isEnabled ||
-              !canOperate ||
-              successfulTradeLimitReached ||
-              loginRequired
-            }
-            onClick={() => void handleStart()}
-            size="large"
-          >
-            {t('controls.start')}
-          </Button>
-          <Button
-            danger
-            icon={<PauseCircleOutlined />}
-            loading={controlsBusy}
-            disabled={controlsBusy || !isEnabled}
-            onClick={() => void handleStop()}
-            size="large"
-          >
-            {t('controls.stop')}
-          </Button>
-        </Space>
-
+      <Space direction="vertical" size={12} style={{ width: '100%' }}>
         {!activeTab.isSupported && (
           <Alert
             message={t('controls.needAlphaPage')}
@@ -1770,9 +1822,9 @@ export function Popup(): React.ReactElement {
             type="warning"
             showIcon
             style={{
-              borderRadius: 8,
-              border: '1px solid #ffe58f',
-              background: 'linear-gradient(135deg, #fffbe6 0%, #fffaed 100%)',
+              borderRadius: 12,
+              border: '1px solid #ffd666',
+              background: '#fffbe6',
             }}
           />
         )}
@@ -1786,9 +1838,9 @@ export function Popup(): React.ReactElement {
               type="success"
               showIcon
               style={{
-                borderRadius: 8,
-                border: '1px solid #b7eb8f',
-                background: 'linear-gradient(135deg, #f6ffed 0%, #f0ffe6 100%)',
+                borderRadius: 12,
+                border: '1px solid #95de64',
+                background: '#f6ffed',
               }}
             />
           )}
@@ -1797,18 +1849,20 @@ export function Popup(): React.ReactElement {
       {snapshot && (
         <Card
           title={
-            <Space size={8}>
-              <span style={{ fontWeight: 600 }}>{t('stats.todayStats')}</span>
+            <Space size={10}>
+              <span style={{ fontWeight: 600, fontSize: 16 }}>{t('stats.todayStats')}</span>
               <Tooltip title={t('stats.statsTooltip')}>
-                <InfoCircleOutlined style={{ color: '#1677ff' }} />
+                <InfoCircleOutlined style={{ color: '#1890ff' }} />
               </Tooltip>
             </Space>
           }
           size="small"
           style={{
-            borderRadius: 12,
-            boxShadow: '0 4px 12px rgba(0,0,0,0.08)',
-            background: 'linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%)',
+            marginBottom: 16,
+            borderRadius: 16,
+            boxShadow: '0 2px 12px rgba(0, 0, 0, 0.06)',
+            background: '#ffffff',
+            border: '1px solid #e8e8e8',
           }}
         >
           <Row gutter={[16, 16]}>
@@ -1969,10 +2023,10 @@ export function Popup(): React.ReactElement {
       {/* 空投提醒卡片 */}
       <Card
         title={
-          <Space>
-            <BellOutlined style={{ color: '#ff4d4f', fontSize: 16 }} />
-            <span style={{ fontWeight: 600 }}>{t('airdrop.title')}</span>
-            <Text type="secondary" style={{ fontSize: 11 }}>
+          <Space size={10}>
+            <BellOutlined style={{ color: '#ff4d4f', fontSize: 18 }} />
+            <span style={{ fontWeight: 600, fontSize: 16 }}>{t('airdrop.title')}</span>
+            <Text type="secondary" style={{ fontSize: 12 }}>
               {t('airdrop.autoUpdate')}
             </Text>
           </Space>
@@ -1980,10 +2034,10 @@ export function Popup(): React.ReactElement {
         bordered={false}
         size="small"
         style={{
-          marginTop: 16,
-          borderRadius: 12,
-          boxShadow: '0 4px 12px rgba(255, 77, 79, 0.12)',
-          background: 'linear-gradient(135deg, #fff7e6 0%, #fffbf0 100%)',
+          borderRadius: 16,
+          boxShadow: '0 2px 12px rgba(0, 0, 0, 0.06)',
+          background: '#ffffff',
+          border: '1px solid #e8e8e8',
         }}
         extra={
           <Button
@@ -2004,12 +2058,6 @@ export function Popup(): React.ReactElement {
               }
             }}
             disabled={airdropLoading}
-            style={{
-              background: 'linear-gradient(135deg, #1890ff 0%, #40a9ff 100%)',
-              border: 'none',
-              borderRadius: 6,
-              boxShadow: '0 2px 6px rgba(24, 144, 255, 0.25)',
-            }}
           >
             {t('controls.refresh')}
           </Button>
@@ -2020,296 +2068,251 @@ export function Popup(): React.ReactElement {
             {t('airdrop.loading')}
           </Text>
         ) : (
-          <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+          <Space direction="vertical" size={16} style={{ width: '100%' }}>
             {/* 今日空投 */}
             {airdropToday.length > 0 && (
-              <div style={{ marginBottom: 16 }}>
+              <div>
                 <div
                   style={{
                     display: 'flex',
                     alignItems: 'center',
                     marginBottom: 12,
                     padding: '8px 12px',
-                    background: 'linear-gradient(135deg, #ff6b6b 0%, #ff8e53 100%)',
+                    background: 'linear-gradient(135deg, #ff4d4f 0%, #ff7a45 100%)',
                     borderRadius: 8,
                   }}
                 >
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    viewBox="0 0 24 24"
-                    fill="white"
-                    style={{ width: 18, height: 18, marginRight: 8 }}
-                    role="img"
-                    aria-label="今日空投"
-                  >
-                    <path d="M12 2.25c-5.385 0-9.75 4.365-9.75 9.75s4.365 9.75 9.75 9.75 9.75-4.365 9.75-9.75S17.385 2.25 12 2.25zM12.75 6a.75.75 0 00-1.5 0v6c0 .414.336.75.75.75h4.5a.75.75 0 000-1.5h-3.75V6z" />
-                  </svg>
+                  <ClockCircleOutlined style={{ color: 'white', fontSize: 16, marginRight: 8 }} />
                   <Text strong style={{ fontSize: 14, color: 'white', margin: 0 }}>
                     {t('airdrop.today')} ({airdropToday.length})
                   </Text>
                 </div>
-                <List
+                <Table
                   size="small"
                   dataSource={airdropToday}
-                  renderItem={(item) => {
-                    const rawSymbol = typeof item.symbol === 'string' ? item.symbol.trim() : '';
-                    const normalizedSymbol = rawSymbol.length > 0 ? rawSymbol.toUpperCase() : '';
-                    const tokenInfo =
-                      normalizedSymbol.length > 0 ? tokenDirectory[normalizedSymbol] : undefined;
-                    const displaySymbol = rawSymbol.length > 0 ? rawSymbol : normalizedSymbol;
+                  pagination={false}
+                  rowKey={(record) => `${record.symbol}-${record.phase || 0}-${record.time}`}
+                  columns={[
+                    {
+                      title: t('airdrop.symbol'),
+                      dataIndex: 'symbol',
+                      key: 'symbol',
+                      width: 100,
+                      render: (_, record) => {
+                        const rawSymbol =
+                          typeof record.symbol === 'string' ? record.symbol.trim() : '';
+                        const normalizedSymbol =
+                          rawSymbol.length > 0 ? rawSymbol.toUpperCase() : '';
+                        const tokenInfo =
+                          normalizedSymbol.length > 0
+                            ? tokenDirectory[normalizedSymbol]
+                            : undefined;
+                        const displaySymbol = rawSymbol.length > 0 ? rawSymbol : normalizedSymbol;
 
-                    return (
-                      <List.Item
-                        style={{
-                          padding: 0,
-                          marginBottom: 8,
-                          border: 'none',
-                        }}
-                      >
-                        <div
-                          style={{
-                            width: '100%',
-                            padding: 12,
-                            background: item.completed
-                              ? 'linear-gradient(135deg, #f5f5f5 0%, #fafafa 100%)'
-                              : 'linear-gradient(135deg, #fff7e6 0%, #fff 100%)',
-                            borderRadius: 8,
-                            border: item.completed ? '1px solid #d9d9d9' : '1px solid #ffd591',
-                            boxShadow: item.completed
-                              ? '0 2px 4px rgba(0,0,0,0.05)'
-                              : '0 2px 8px rgba(255, 140, 0, 0.12)',
-                          }}
-                        >
-                          <Space direction="vertical" size={4} style={{ width: '100%' }}>
-                            <Space
-                              size="small"
-                              style={{ width: '100%', justifyContent: 'space-between' }}
-                            >
-                              <Space size="small" align="center">
-                                {tokenInfo?.iconUrl && (
-                                  <img
-                                    src={tokenInfo.iconUrl}
-                                    alt={`${displaySymbol} icon`}
-                                    style={{
-                                      width: 18,
-                                      height: 18,
-                                      borderRadius: '50%',
-                                      objectFit: 'cover',
-                                      border: '2px solid #fff',
-                                      boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
-                                    }}
-                                  />
-                                )}
-                                <Text
-                                  strong
-                                  style={{
-                                    fontSize: 13,
-                                    color: item.completed ? '#8c8c8c' : '#ff8c00',
-                                  }}
-                                >
-                                  {/* 【复刻】完全按照原代码格式显示 */}
-                                  {displaySymbol}
-                                  {item.phase &&
-                                    item.phase > 1 &&
-                                    `-${t('airdrop.phaseLabel')}${item.phase}`}
-                                  {item.type === 'tge' && ' (TGE)'}
-                                </Text>
-                                {/* 【复刻】完成标记 - 使用SVG图标 */}
-                                {item.completed && (
-                                  <svg
-                                    xmlns="http://www.w3.org/2000/svg"
-                                    viewBox="0 0 24 24"
-                                    fill="currentColor"
-                                    style={{ width: 16, height: 16, color: '#52c41a' }}
-                                    role="img"
-                                    aria-label="已完成"
-                                  >
-                                    <title>已完成</title>
-                                    <path
-                                      fillRule="evenodd"
-                                      d="M2.25 12c0-5.385 4.365-9.75 9.75-9.75s9.75 4.365 9.75 9.75-4.365 9.75-9.75 9.75S2.25 17.385 2.25 12Zm13.36-1.814a.75.75 0 1 0-1.22-.872l-3.236 4.53L9.53 12.22a.75.75 0 0 0-1.06 1.06l2.25 2.25a.75.75 0 0 0 1.14-.094l3.75-5.25Z"
-                                      clipRule="evenodd"
-                                    />
-                                  </svg>
-                                )}
-                              </Space>
-                              {/* 【高亮】时间显示 - 秒杀用红色，其他用蓝色 */}
-                              <Text
-                                strong
+                        return (
+                          <Space size="small" align="center">
+                            {tokenInfo?.iconUrl && (
+                              <img
+                                src={tokenInfo.iconUrl}
+                                alt={`${displaySymbol} icon`}
                                 style={{
-                                  fontSize: 12,
-                                  fontWeight: 700,
-                                  color: '#fff',
-                                  background:
-                                    !item.completed && item.type === 'grab'
-                                      ? 'linear-gradient(135deg, #ff4d4f 0%, #ff7875 100%)'
-                                      : 'linear-gradient(135deg, #1890ff 0%, #40a9ff 100%)',
-                                  padding: '4px 10px',
-                                  borderRadius: 6,
-                                  boxShadow: '0 2px 6px rgba(0,0,0,0.15)',
+                                  width: 16,
+                                  height: 16,
+                                  borderRadius: '50%',
+                                  objectFit: 'cover',
                                 }}
-                              >
-                                {item.time} {item.type === 'grab' && t('airdrop.grab')}
-                                {item.type === 'tge' && item.type !== 'grab' && 'TGE'}
-                              </Text>
-                            </Space>
-                            <Space size="middle" style={{ fontSize: 11, color: '#666' }}>
-                              <span>
-                                {t('airdrop.quantity')}: {item.quantity}
-                              </span>
-                              {/* 【复刻】价格显示 - 使用橙色 */}
-                              {item.estimatedValue && (
-                                <span
-                                  style={{
-                                    color: '#ff7a00',
-                                    fontSize: 11,
-                                    fontWeight: 600,
-                                  }}
-                                >
-                                  ≈{item.estimatedValue}
-                                </span>
-                              )}
-                              <span>
-                                {t('airdrop.threshold')}: {item.threshold}
-                              </span>
-                            </Space>
+                              />
+                            )}
+                            <Text
+                              strong
+                              style={{
+                                fontSize: 12,
+                                color: record.completed ? '#8c8c8c' : '#262626',
+                              }}
+                            >
+                              {displaySymbol}
+                              {record.phase && record.phase > 1 && `-${record.phase}`}
+                              {record.type === 'tge' && ' (TGE)'}
+                            </Text>
+                            {record.completed && (
+                              <CheckCircleOutlined style={{ color: '#52c41a', fontSize: 12 }} />
+                            )}
                           </Space>
-                        </div>
-                      </List.Item>
-                    );
-                  }}
+                        );
+                      },
+                    },
+                    {
+                      title: t('airdrop.time'),
+                      dataIndex: 'time',
+                      key: 'time',
+                      width: 100,
+                      render: (_, record) => (
+                        <Tag
+                          color={
+                            !record.completed && record.type === 'grab'
+                              ? 'red'
+                              : record.completed
+                                ? 'default'
+                                : 'blue'
+                          }
+                          style={{ fontSize: 12, margin: 0 }}
+                        >
+                          {record.time} {record.type === 'grab' && t('airdrop.grab')}
+                        </Tag>
+                      ),
+                    },
+                    {
+                      title: t('airdrop.quantity'),
+                      dataIndex: 'quantity',
+                      key: 'quantity',
+                      width: 80,
+                      render: (text) => (
+                        <Text style={{ fontSize: 14, color: '#595959' }}>{text}</Text>
+                      ),
+                    },
+                    {
+                      title: t('airdrop.price'),
+                      dataIndex: 'estimatedValue',
+                      key: 'estimatedValue',
+                      width: 70,
+                      render: (text) =>
+                        text ? (
+                          <Text style={{ fontSize: 14, color: '#ff7a00', fontWeight: 600 }}>
+                            {text}
+                          </Text>
+                        ) : (
+                          <Text style={{ fontSize: 14, color: '#d9d9d9' }}>-</Text>
+                        ),
+                    },
+                    {
+                      title: t('airdrop.threshold'),
+                      dataIndex: 'threshold',
+                      key: 'threshold',
+                      width: 70,
+                      render: (text) => (
+                        <Text style={{ fontSize: 14, color: '#595959' }}>{text}</Text>
+                      ),
+                    },
+                  ]}
+                  rowClassName={(record) =>
+                    record.completed ? 'airdrop-row-completed' : 'airdrop-row-active'
+                  }
+                  style={{ fontSize: 11 }}
                 />
               </div>
             )}
 
             {/* 空投预告 */}
             {airdropForecast.length > 0 && (
-              <div style={{ marginBottom: 16 }}>
+              <div>
                 <div
                   style={{
                     display: 'flex',
                     alignItems: 'center',
                     marginBottom: 12,
                     padding: '8px 12px',
-                    background: 'linear-gradient(135deg, #40a9ff 0%, #1890ff 100%)',
+                    background: 'linear-gradient(135deg, #1890ff 0%, #096dd9 100%)',
                     borderRadius: 8,
                   }}
                 >
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    viewBox="0 0 24 24"
-                    fill="white"
-                    style={{ width: 18, height: 18, marginRight: 8 }}
-                    role="img"
-                    aria-label="空投预告"
-                  >
-                    <path d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5" />
-                  </svg>
+                  <BellOutlined style={{ color: 'white', fontSize: 16, marginRight: 8 }} />
                   <Text strong style={{ fontSize: 14, color: 'white', margin: 0 }}>
                     {t('airdrop.forecast')} ({airdropForecast.length})
                   </Text>
                 </div>
-                <List
+                <Table
                   size="small"
                   dataSource={airdropForecast}
-                  renderItem={(item) => {
-                    const rawSymbol = typeof item.symbol === 'string' ? item.symbol.trim() : '';
-                    const normalizedSymbol = rawSymbol.length > 0 ? rawSymbol.toUpperCase() : '';
-                    const tokenInfo =
-                      normalizedSymbol.length > 0 ? tokenDirectory[normalizedSymbol] : undefined;
-                    const displaySymbol = rawSymbol.length > 0 ? rawSymbol : normalizedSymbol;
+                  pagination={false}
+                  rowKey={(record) => `${record.symbol}-${record.phase || 0}-${record.time}`}
+                  columns={[
+                    {
+                      title: t('airdrop.symbol'),
+                      dataIndex: 'symbol',
+                      key: 'symbol',
+                      width: 100,
+                      render: (_, record) => {
+                        const rawSymbol =
+                          typeof record.symbol === 'string' ? record.symbol.trim() : '';
+                        const normalizedSymbol =
+                          rawSymbol.length > 0 ? rawSymbol.toUpperCase() : '';
+                        const tokenInfo =
+                          normalizedSymbol.length > 0
+                            ? tokenDirectory[normalizedSymbol]
+                            : undefined;
+                        const displaySymbol = rawSymbol.length > 0 ? rawSymbol : normalizedSymbol;
 
-                    return (
-                      <List.Item
-                        style={{
-                          padding: 0,
-                          marginBottom: 8,
-                          border: 'none',
-                        }}
-                      >
-                        <div
-                          style={{
-                            width: '100%',
-                            padding: 12,
-                            background: 'linear-gradient(135deg, #e6f7ff 0%, #fff 100%)',
-                            borderRadius: 8,
-                            border: '1px solid #91d5ff',
-                            boxShadow: '0 2px 8px rgba(24, 144, 255, 0.08)',
-                          }}
-                        >
-                          <Space direction="vertical" size={4} style={{ width: '100%' }}>
-                            <Space
-                              size="small"
-                              style={{ width: '100%', justifyContent: 'space-between' }}
-                            >
-                              <Space size="small" align="center">
-                                {tokenInfo?.iconUrl && (
-                                  <img
-                                    src={tokenInfo.iconUrl}
-                                    alt={`${displaySymbol} icon`}
-                                    style={{
-                                      width: 18,
-                                      height: 18,
-                                      borderRadius: '50%',
-                                      objectFit: 'cover',
-                                      border: '2px solid #fff',
-                                      boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
-                                    }}
-                                  />
-                                )}
-                                <Text strong style={{ fontSize: 13, color: '#1890ff' }}>
-                                  {/* 【复刻】完全按照原代码格式显示 */}
-                                  {displaySymbol}
-                                  {item.phase &&
-                                    item.phase > 1 &&
-                                    `-${t('airdrop.phaseLabel')}${item.phase}`}
-                                  {item.type === 'tge' && ' (TGE)'}
-                                </Text>
-                              </Space>
-                              {/* 【高亮】时间显示 - 秒杀用红色，其他用蓝色 */}
-                              <Text
-                                strong
+                        return (
+                          <Space size="small" align="center">
+                            {tokenInfo?.iconUrl && (
+                              <img
+                                src={tokenInfo.iconUrl}
+                                alt={`${displaySymbol} icon`}
                                 style={{
-                                  fontSize: 12,
-                                  fontWeight: 700,
-                                  color: '#fff',
-                                  background:
-                                    item.type === 'grab'
-                                      ? 'linear-gradient(135deg, #ff4d4f 0%, #ff7875 100%)'
-                                      : 'linear-gradient(135deg, #1890ff 0%, #40a9ff 100%)',
-                                  padding: '4px 10px',
-                                  borderRadius: 6,
-                                  boxShadow: '0 2px 6px rgba(0,0,0,0.15)',
+                                  width: 16,
+                                  height: 16,
+                                  borderRadius: '50%',
+                                  objectFit: 'cover',
                                 }}
-                              >
-                                {item.time} {item.type === 'grab' && t('airdrop.grab')}
-                              </Text>
-                            </Space>
-                            <Space size="middle" style={{ fontSize: 11, color: '#666' }}>
-                              <span>
-                                {t('airdrop.quantity')}: {item.quantity}
-                              </span>
-                              {/* 【复刻】价格显示 - 使用橙色 */}
-                              {item.estimatedValue && (
-                                <span
-                                  style={{
-                                    color: '#ff7a00',
-                                    fontSize: 11,
-                                    fontWeight: 600,
-                                  }}
-                                >
-                                  ≈{item.estimatedValue}
-                                </span>
-                              )}
-                              <span>
-                                {t('airdrop.threshold')}: {item.threshold}
-                              </span>
-                            </Space>
+                              />
+                            )}
+                            <Text strong style={{ fontSize: 12, color: '#1890ff' }}>
+                              {displaySymbol}
+                              {record.phase && record.phase > 1 && `-${record.phase}`}
+                              {record.type === 'tge' && ' (TGE)'}
+                            </Text>
                           </Space>
-                        </div>
-                      </List.Item>
-                    );
-                  }}
+                        );
+                      },
+                    },
+                    {
+                      title: t('airdrop.time'),
+                      dataIndex: 'time',
+                      key: 'time',
+                      width: 100,
+                      render: (_, record) => (
+                        <Tag
+                          color={record.type === 'grab' ? 'red' : 'blue'}
+                          style={{ fontSize: 12, margin: 0 }}
+                        >
+                          {record.time} {record.type === 'grab' && t('airdrop.grab')}
+                        </Tag>
+                      ),
+                    },
+                    {
+                      title: t('airdrop.quantity'),
+                      dataIndex: 'quantity',
+                      key: 'quantity',
+                      width: 80,
+                      render: (text) => (
+                        <Text style={{ fontSize: 14, color: '#595959' }}>{text}</Text>
+                      ),
+                    },
+                    {
+                      title: t('airdrop.price'),
+                      dataIndex: 'estimatedValue',
+                      key: 'estimatedValue',
+                      width: 70,
+                      render: (text) =>
+                        text ? (
+                          <Text style={{ fontSize: 14, color: '#ff7a00', fontWeight: 600 }}>
+                            {text}
+                          </Text>
+                        ) : (
+                          <Text style={{ fontSize: 14, color: '#d9d9d9' }}>-</Text>
+                        ),
+                    },
+                    {
+                      title: t('airdrop.threshold'),
+                      dataIndex: 'threshold',
+                      key: 'threshold',
+                      width: 70,
+                      render: (text) => (
+                        <Text style={{ fontSize: 14, color: '#595959' }}>{text}</Text>
+                      ),
+                    },
+                  ]}
+                  style={{ fontSize: 11 }}
                 />
               </div>
             )}

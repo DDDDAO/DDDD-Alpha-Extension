@@ -18,7 +18,7 @@
   "settings": {
     "title": "Automation Settings",
     "priceOffset": "Price Offset (%)",
-    "priceOffsetTooltip": "The tool automatically refreshes the average price and places orders with the price offset setting. Positive values (+1%) add 1% to the base price, negative values (-1%) subtract 1% from the base price. Sideways mode (buy +0.01%, sell -0.01%) is suitable for stable prices; Bullish mode (buy +0.01%, sell +0.02%) is suitable for rising prices; Custom mode supports flexible configuration from -5% to +5%.",
+    "priceOffsetTooltip": "The tool automatically refreshes the average price and places orders with the price offset setting. Positive values (+1%) add 1% to the base price, negative values (-1%) subtract 1% from the base price. Sideways mode (buy +0.01%, sell -0.01%) is suitable for stable prices; Bullish mode (buy +0.05%, sell 0.00%) is suitable for rising prices; Custom mode supports flexible configuration from -5% to +5%.",
     "buyPriceOffset": "Buy Price Offset (%)",
     "sellPriceOffset": "Sell Price Offset (%)",
     "pointsFactor": "Points Factor",
@@ -26,7 +26,7 @@
     "pointsTarget": "Points Target",
     "pointsTargetTooltip": "The program will keep running after it starts until it reaches the target points. Common points trading volumes: 14 points -> 16,384; 15 points -> 32,768; 16 points -> 65,536",
     "bullishMode": "Bullish Mode",
-    "bullishModeDesc": "(Buy: +0.01%, Sell: +0.02%)",
+    "bullishModeDesc": "(Buy: +0.05%, Sell: 0.00%)",
     "sidewaysMode": "Sideways Mode",
     "sidewaysModeDesc": "(Buy: +0.01%, Sell: -0.01%)",
     "customMode": "Custom"

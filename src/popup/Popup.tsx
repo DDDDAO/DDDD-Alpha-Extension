@@ -1711,8 +1711,8 @@ export function Popup(): React.ReactElement {
                   buyOffset = DEFAULT_BUY_PRICE_OFFSET_PERCENT;
                   sellOffset = DEFAULT_SELL_PRICE_OFFSET_PERCENT;
                 } else if (mode === 'bullish') {
-                  buyOffset = DEFAULT_BUY_PRICE_OFFSET_PERCENT;
-                  sellOffset = 0.02;
+                  buyOffset = 0.05;
+                  sellOffset = 0.0;
                 }
                 setBuyPriceOffset(String(buyOffset));
                 setSellPriceOffset(String(sellOffset));

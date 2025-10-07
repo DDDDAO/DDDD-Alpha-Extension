@@ -1751,21 +1751,25 @@ export function Popup(): React.ReactElement {
               disabled={controlsBusy}
               style={{ width: '100%', marginBottom: 12 }}
             >
-              <Space direction="vertical" size="small" style={{ width: '100%' }}>
+              <Space
+                direction="horizontal"
+                size="middle"
+                style={{ width: '100%', flexWrap: 'wrap' }}
+              >
                 <Radio value="bullish">
                   <Space size={6}>
                     <span>{t('settings.bullishMode')}</span>
-                    <Text type="secondary" style={{ fontSize: 11 }}>
-                      {t('settings.bullishModeDesc')}
-                    </Text>
+                    <Tooltip title={t('settings.bullishModeDesc')}>
+                      <InfoCircleOutlined style={{ color: '#1890ff' }} />
+                    </Tooltip>
                   </Space>
                 </Radio>
                 <Radio value="sideways">
                   <Space size={6}>
                     <span>{t('settings.sidewaysMode')}</span>
-                    <Text type="secondary" style={{ fontSize: 11 }}>
-                      {t('settings.sidewaysModeDesc')}
-                    </Text>
+                    <Tooltip title={t('settings.sidewaysModeDesc')}>
+                      <InfoCircleOutlined style={{ color: '#1890ff' }} />
+                    </Tooltip>
                   </Space>
                 </Radio>
                 <Radio value="custom">{t('settings.customMode')}</Radio>
@@ -1773,8 +1777,8 @@ export function Popup(): React.ReactElement {
             </Radio.Group>
 
             {priceOffsetMode === 'custom' && (
-              <Space direction="vertical" size={12} style={{ width: '100%', marginTop: 12 }}>
-                <div>
+              <Row gutter={12} style={{ marginTop: 12 }}>
+                <Col span={12}>
                   <Text
                     type="secondary"
                     style={{ fontSize: 13, fontWeight: 500, display: 'block', marginBottom: 8 }}
@@ -1814,8 +1818,8 @@ export function Popup(): React.ReactElement {
                     stringMode={false}
                     style={{ width: '100%' }}
                   />
-                </div>
-                <div>
+                </Col>
+                <Col span={12}>
                   <Text
                     type="secondary"
                     style={{ fontSize: 13, fontWeight: 500, display: 'block', marginBottom: 8 }}
@@ -1855,8 +1859,8 @@ export function Popup(): React.ReactElement {
                     stringMode={false}
                     style={{ width: '100%' }}
                   />
-                </div>
-              </Space>
+                </Col>
+              </Row>
             )}
           </div>
 
@@ -1882,7 +1886,7 @@ export function Popup(): React.ReactElement {
               disabled={controlsBusy}
               style={{ width: '100%' }}
             >
-              <Space direction="vertical" size="small" style={{ width: '100%' }}>
+              <Space direction="horizontal" size="middle" style={{ width: '100%' }}>
                 <Radio value="fast">
                   <Space size={6}>
                     <span>{t('settings.fastMode')}</span>
@@ -2268,7 +2272,7 @@ export function Popup(): React.ReactElement {
                 valueStyle={{ fontSize: 14 }}
               />
             </Col>
-            <Col span={24}>
+            <Col span={12}>
               <Statistic
                 title={
                   <Space size={6}>

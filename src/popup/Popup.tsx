@@ -31,7 +31,7 @@ import { MAX_SUCCESSFUL_TRADES, SUCCESSFUL_TRADES_LIMIT_MESSAGE } from '../confi
 import { STORAGE_KEY, TOKEN_DIRECTORY_STORAGE_KEY } from '../config/storageKey.js';
 import { useI18nUrl } from '../i18n/useI18nUrl';
 import type { ProcessedAirdrop } from '../lib/airdrop.js';
-import { AIRDROP_STORAGE_KEY, processAirdropApiResponse } from '../lib/airdrop.js';
+import { AIRDROP_STORAGE_KEY } from '../lib/airdrop.js';
 import { calculateAlphaPointStats } from '../lib/alphaPoints.js';
 import type {
   FetchOrderHistoryResponse,
@@ -426,125 +426,65 @@ export function Popup(): React.ReactElement {
     }
   }, []);
 
-  // 【完整复刻binance helper】在alpha123.uk页面环境中获取数据
+  // 【最简方案】直接从 Service Worker 的 storage 中读取数据
+  // Service Worker 会每 30 分钟自动更新空投数据
   const fetchAirdrops = useCallback(async (): Promise<void> => {
     try {
       setAirdropLoading(true);
-      console.log('[Popup] 🔄 开始获取空投数据...');
+      console.log('[Popup] 🔄 从 storage 加载空投数据...');
 
-      const timestamp = Math.floor(Date.now() / 10000) * 10000;
-      const airdropUrl = `https://alpha123.uk/api/data?t=${timestamp}&fresh=1`;
-      const priceUrl = `https://alpha123.uk/api/price/?batch=all&t=${timestamp}`;
+      // 从 storage 读取 Service Worker 已获取的数据
+      const result = await chrome.storage.local.get(AIRDROP_STORAGE_KEY);
+      const cachedData = result[AIRDROP_STORAGE_KEY];
 
-      // 【关键1】查找或创建alpha123.uk的tab
-      console.log('[Popup] 🔍 查找alpha123.uk tab...');
-      const tabs = await chrome.tabs.query({ url: 'https://alpha123.uk/*' });
+      if (!cachedData || !cachedData.timestamp) {
+        console.log('[Popup] 📭 无缓存数据，请求 Service Worker 立即更新...');
 
-      let targetTab: chrome.tabs.Tab | undefined;
+        // 通知 Service Worker 立即更新数据
+        await chrome.runtime.sendMessage({ type: 'UPDATE_AIRDROP_NOW' });
 
-      if (tabs.length > 0) {
-        targetTab = tabs[0];
-        console.log('[Popup] ✅ 找到已存在的tab:', targetTab.id);
-      } else {
-        console.log('[Popup] 📝 创建新tab...');
-        targetTab = await chrome.tabs.create({
-          url: 'https://alpha123.uk/zh/index.html',
-          active: false,
-        });
-        console.log('[Popup] ✅ 创建tab成功:', targetTab.id);
-        await new Promise((resolve) => setTimeout(resolve, 3000));
-      }
+        // 等待 1 秒后重新读取
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+        const retryResult = await chrome.storage.local.get(AIRDROP_STORAGE_KEY);
+        const retryData = retryResult[AIRDROP_STORAGE_KEY];
 
-      if (!targetTab?.id) {
-        throw new Error('无法获取tab ID');
-      }
-
-      if (chrome.scripting?.executeScript) {
-        try {
-          console.log('[Popup] 🛠️ 尝试注入alpha123 fetcher脚本...');
-          await chrome.scripting.executeScript({
-            target: { tabId: targetTab.id },
-            files: ['dist/content/alpha123-fetcher.js'],
-          });
-          console.log('[Popup] 🛠️ alpha123 fetcher脚本已注入');
-        } catch (err) {
-          console.warn('[Popup] ⚠️ 注入alpha123 fetcher脚本失败:', err);
+        if (retryData && retryData.today) {
+          setAirdropToday(retryData.today);
+          setAirdropForecast(retryData.forecast || []);
+          console.log('[Popup] ✅ 数据加载成功（重试）');
+        } else {
+          setAirdropToday([]);
+          setAirdropForecast([]);
+          console.log('[Popup] ⚠️ 仍无数据');
         }
-      }
-
-      // 【关键2】向alpha123.uk页面的content script发送消息
-      console.log('[Popup] 📤 向tab发送消息...');
-      const response = await chrome.tabs.sendMessage(targetTab.id, {
-        type: 'FETCH_AIRDROP_DATA',
-        airdropUrl,
-        priceUrl,
-      });
-
-      console.log('[Popup] 📦 收到响应:', response);
-
-      if (!response?.success) {
-        throw new Error(response?.error || '获取数据失败');
-      }
-
-      const { airdropData, priceData } = response;
-
-      if (!airdropData?.airdrops || airdropData.airdrops.length === 0) {
-        console.log('[Popup] 无空投数据');
-        setAirdropToday([]);
-        setAirdropForecast([]);
         return;
       }
 
-      console.log('[Popup] 📦 获取到', airdropData.airdrops.length, '个空投');
+      // 检查数据新鲜度（5分钟内的数据视为新鲜）
+      const dataAge = Date.now() - cachedData.timestamp;
+      const isFresh = dataAge < 5 * 60 * 1000;
+
       console.log(
-        '[Popup] 💰 价格数据:',
-        priceData?.success ? Object.keys(priceData.prices).length : 0,
-        '个币种',
+        `[Popup] 📦 缓存数据年龄: ${Math.round(dataAge / 1000)}秒 ${isFresh ? '✅' : '⚠️ 过期'}`,
       );
 
-      // 使用lib/airdrop.ts的处理函数（包含过期判断等完整逻辑）
-      const processedData = processAirdropApiResponse(airdropData);
+      // 使用缓存数据
+      setAirdropToday(cachedData.today || []);
+      setAirdropForecast(cachedData.forecast || []);
 
-      console.log('[Popup] 今日:', processedData.today.length, '个');
-      console.log('[Popup] 未来:', processedData.forecast.length, '个');
+      console.log('[Popup] 今日空投:', cachedData.today?.length || 0, '个');
+      console.log('[Popup] 预告空投:', cachedData.forecast?.length || 0, '个');
+      console.log('[Popup] ✅ 数据加载成功');
 
-      // 4. 添加价格信息
-      const addPriceInfo = (airdrop: ProcessedAirdrop) => {
-        if (priceData?.success && priceData.prices?.[airdrop.symbol]) {
-          const priceInfo = priceData.prices[airdrop.symbol];
-          const price = Number(priceInfo.dex_price) > 0 ? priceInfo.dex_price : priceInfo.cex_price;
-
-          if (price && Number(price) > 0 && airdrop.quantity && airdrop.quantity !== '-') {
-            const quantity = Number(airdrop.quantity);
-            if (!Number.isNaN(quantity) && quantity > 0) {
-              airdrop.price = price;
-              const value = Number(price) * quantity;
-              airdrop.estimatedValue = `$${value.toFixed(2)}`;
-            }
-          }
-        }
-      };
-
-      processedData.today.forEach(addPriceInfo);
-      processedData.forecast.forEach(addPriceInfo);
-
-      // 5. 更新状态
-      setAirdropToday(processedData.today);
-      setAirdropForecast(processedData.forecast);
-
-      // 6. 保存到storage供后续使用
-      await chrome.storage.local.set({
-        [AIRDROP_STORAGE_KEY]: {
-          today: processedData.today,
-          forecast: processedData.forecast,
-          prices: priceData?.success ? priceData.prices : undefined,
-          timestamp: Date.now(),
-        },
-      });
-
-      console.log('[Popup] ✅ 数据获取和保存成功');
+      // 如果数据过期，在后台触发更新（不阻塞 UI）
+      if (!isFresh) {
+        console.log('[Popup] 🔄 后台触发数据更新...');
+        chrome.runtime.sendMessage({ type: 'UPDATE_AIRDROP_NOW' }).catch((err) => {
+          console.warn('[Popup] 触发更新失败:', err);
+        });
+      }
     } catch (error) {
-      console.error('[Popup] ❌ 获取失败:', error);
+      console.error('[Popup] ❌ 加载失败:', error);
       setAirdropToday([]);
       setAirdropForecast([]);
     } finally {

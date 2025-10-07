@@ -1,6 +1,6 @@
 # DDDD Alpha Extension
 
-一个智能化的币安 Alpha 刷分助手，集成稳定性看板、自动 VWAP 交易和多账号管理功能。由 DDDDAO 量化社区开发，欢迎进群一起讨论刷分技巧：https://t.me/ddddao2025
+一个智能化的币安 Alpha 刷分助手，集成稳定性看板、自动交易等功能。由 DDDDAO 量化社区开发，欢迎进群一起讨论刷分技巧：https://t.me/ddddao2025
 
 
 ### 免责声明

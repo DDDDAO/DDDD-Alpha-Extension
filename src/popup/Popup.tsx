@@ -1903,70 +1903,72 @@ export function Popup(): React.ReactElement {
             </Radio.Group>
           </div>
 
-          <div>
-            <Space size={6} style={{ marginBottom: 8 }}>
-              <Text type="secondary" style={{ fontSize: 13, fontWeight: 500 }}>
-                {t('settings.pointsFactor')}
-              </Text>
-              <Tooltip title={t('settings.pointsFactorTooltip')}>
-                <InfoCircleOutlined style={{ color: '#1890ff' }} />
-              </Tooltip>
-            </Space>
-            <InputNumber
-              id={pointsFactorId}
-              min={1}
-              max={1000}
-              step={1}
-              placeholder="1"
-              value={Number.parseFloat(localPointsFactor)}
-              onChange={(value) => {
-                if (isPointsFactorLocked) {
-                  return;
-                }
-                isEditingPointsFactor.current = true;
-                setLocalPointsFactor(String(value ?? 1));
-              }}
-              onBlur={(e) => void handlePointsFactorChange(e.target.value)}
-              onPressEnter={(e) => {
-                e.preventDefault();
-                (e.target as HTMLInputElement).blur();
-              }}
-              disabled={controlsBusy || isPointsFactorLocked}
-              title="每次成功订单后应用于记录买入量的乘数"
-              style={{ width: '100%' }}
-            />
-          </div>
+          <Row gutter={12}>
+            <Col span={12}>
+              <Space size={6} style={{ marginBottom: 8 }}>
+                <Text type="secondary" style={{ fontSize: 13, fontWeight: 500 }}>
+                  {t('settings.pointsTarget')}
+                </Text>
+                <Tooltip title={t('settings.pointsTargetTooltip')}>
+                  <InfoCircleOutlined style={{ color: '#1890ff' }} />
+                </Tooltip>
+              </Space>
+              <InputNumber
+                id={pointsTargetId}
+                min={1}
+                max={1000}
+                step={1}
+                placeholder="15"
+                value={Number.parseFloat(localPointsTarget)}
+                onChange={(value) => {
+                  isEditingPointsTarget.current = true;
+                  setLocalPointsTarget(String(value ?? 15));
+                }}
+                onBlur={(e) => void handlePointsTargetChange(e.target.value)}
+                onPressEnter={(e) => {
+                  e.preventDefault();
+                  (e.target as HTMLInputElement).blur();
+                }}
+                disabled={controlsBusy}
+                title="当今日 alpha 积分超过此阈值时停止自动化"
+                style={{ width: '100%' }}
+              />
+            </Col>
 
-          <div>
-            <Space size={6} style={{ marginBottom: 8 }}>
-              <Text type="secondary" style={{ fontSize: 13, fontWeight: 500 }}>
-                {t('settings.pointsTarget')}
-              </Text>
-              <Tooltip title={t('settings.pointsTargetTooltip')}>
-                <InfoCircleOutlined style={{ color: '#1890ff' }} />
-              </Tooltip>
-            </Space>
-            <InputNumber
-              id={pointsTargetId}
-              min={1}
-              max={1000}
-              step={1}
-              placeholder="15"
-              value={Number.parseFloat(localPointsTarget)}
-              onChange={(value) => {
-                isEditingPointsTarget.current = true;
-                setLocalPointsTarget(String(value ?? 15));
-              }}
-              onBlur={(e) => void handlePointsTargetChange(e.target.value)}
-              onPressEnter={(e) => {
-                e.preventDefault();
-                (e.target as HTMLInputElement).blur();
-              }}
-              disabled={controlsBusy}
-              title="当今日 alpha 积分超过此阈值时停止自动化"
-              style={{ width: '100%' }}
-            />
-          </div>
+            <Col span={12}>
+              <Space size={6} style={{ marginBottom: 8 }}>
+                <Text type="secondary" style={{ fontSize: 13, fontWeight: 500 }}>
+                  {t('settings.pointsFactor')}
+                </Text>
+                <Tooltip title={t('settings.pointsFactorTooltip')}>
+                  <InfoCircleOutlined style={{ color: '#1890ff' }} />
+                </Tooltip>
+              </Space>
+              <InputNumber
+                id={pointsFactorId}
+                min={1}
+                max={1000}
+                step={1}
+                placeholder="1"
+                value={Number.parseFloat(localPointsFactor)}
+                onChange={(value) => {
+                  if (isPointsFactorLocked) {
+                    return;
+                  }
+                  isEditingPointsFactor.current = true;
+                  setLocalPointsFactor(String(value ?? 1));
+                }}
+                onBlur={(e) => void handlePointsFactorChange(e.target.value)}
+                onPressEnter={(e) => {
+                  e.preventDefault();
+                  (e.target as HTMLInputElement).blur();
+                }}
+                disabled={controlsBusy || isPointsFactorLocked}
+                title="每次成功订单后应用于记录买入量的乘数"
+                style={{ width: '100%' }}
+              />
+            </Col>
+          </Row>
         </Space>
       </Card>
 

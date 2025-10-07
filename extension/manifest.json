@@ -29,12 +29,6 @@
       "matches": ["https://www.binance.com/*"],
       "js": ["content-loader.js"],
       "run_at": "document_idle"
-    },
-    {
-      "matches": ["https://alpha123.uk/*"],
-      "js": ["dist/content/alpha123-fetcher.js"],
-      "run_at": "document_end",
-      "all_frames": true
     }
   ],
   "web_accessible_resources": [

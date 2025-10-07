@@ -29,7 +29,13 @@
     "bullishModeDesc": "(Buy: +0.05%, Sell: 0.00%)",
     "sidewaysMode": "Sideways Mode",
     "sidewaysModeDesc": "(Buy: +0.01%, Sell: -0.01%)",
-    "customMode": "Custom"
+    "customMode": "Custom",
+    "intervalMode": "Trading Interval",
+    "intervalModeTooltip": "Controls the wait time between orders. Fast mode: 1-3 seconds random delay, suitable for quick trading; Medium mode: 5-10 seconds random delay, more safe and stable.",
+    "fastMode": "Fast Mode",
+    "fastModeDesc": "(1-3s)",
+    "mediumMode": "Medium Mode",
+    "mediumModeDesc": "(5-10s)"
   },
   "controls": {
     "start": "Start",

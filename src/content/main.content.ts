@@ -1,10 +1,16 @@
 import {
   DEFAULT_BUY_PRICE_OFFSET_PERCENT,
+  DEFAULT_INTERVAL_MODE,
   DEFAULT_POINTS_FACTOR,
   DEFAULT_POINTS_TARGET,
   DEFAULT_PRICE_OFFSET_PERCENT,
   DEFAULT_SELL_PRICE_OFFSET_PERCENT,
+  FAST_MODE_MAX_DELAY,
+  FAST_MODE_MIN_DELAY,
+  type IntervalMode,
   MAX_SUCCESSFUL_TRADES,
+  MEDIUM_MODE_MAX_DELAY,
+  MEDIUM_MODE_MIN_DELAY,
   SUCCESSFUL_TRADES_LIMIT_MESSAGE,
 } from '../config/defaults.js';
 import { SELECTORS } from '../config/selectors.js';
@@ -28,8 +34,6 @@ import {
 const ORDER_PLACEMENT_COOLDOWN_MS = 5_000;
 const LIMIT_STATE_TIMEOUT_MS = 2_000;
 const LIMIT_STATE_POLL_INTERVAL_MS = 100;
-const MIN_AUTOMATION_DELAY_MS = 5_000;
-const MAX_AUTOMATION_DELAY_MS = 10_000;
 
 const MIN_PRICE_OFFSET_PERCENT = -5;
 const MAX_PRICE_OFFSET_PERCENT = 5;
@@ -346,6 +350,7 @@ let buyPriceOffset = DEFAULT_BUY_PRICE_OFFSET_PERCENT;
 let sellPriceOffset = DEFAULT_SELL_PRICE_OFFSET_PERCENT;
 let pointsFactor = DEFAULT_POINTS_FACTOR;
 let pointsTarget = DEFAULT_POINTS_TARGET;
+let intervalMode: IntervalMode = DEFAULT_INTERVAL_MODE;
 let nextEvaluationTimeoutId: number | undefined;
 let automationLoopActive = false;
 
@@ -1167,9 +1172,20 @@ function teardownPolling(): void {
 }
 
 function getRandomAutomationDelay(): number {
-  const spread = MAX_AUTOMATION_DELAY_MS - MIN_AUTOMATION_DELAY_MS;
+  let minDelay: number;
+  let maxDelay: number;
+
+  if (intervalMode === 'fast') {
+    minDelay = FAST_MODE_MIN_DELAY;
+    maxDelay = FAST_MODE_MAX_DELAY;
+  } else {
+    minDelay = MEDIUM_MODE_MIN_DELAY;
+    maxDelay = MEDIUM_MODE_MAX_DELAY;
+  }
+
+  const spread = maxDelay - minDelay;
   const offset = Math.random() * spread;
-  return Math.floor(MIN_AUTOMATION_DELAY_MS + offset);
+  return Math.floor(minDelay + offset);
 }
 
 function scheduleNextAutomationCycle(delayMs?: number): void {
@@ -1238,6 +1254,7 @@ function applyAutomationState(value: unknown): void {
   let nextSellPriceOffset = DEFAULT_SELL_PRICE_OFFSET_PERCENT;
   let nextPointsFactor = DEFAULT_POINTS_FACTOR;
   let nextPointsTarget = DEFAULT_POINTS_TARGET;
+  let nextIntervalMode: IntervalMode = DEFAULT_INTERVAL_MODE;
 
   if (value && typeof value === 'object') {
     const record = value as { isEnabled?: unknown; settings?: unknown };
@@ -1265,6 +1282,9 @@ function applyAutomationState(value: unknown): void {
 
       const targetCandidate = (record.settings as { pointsTarget?: unknown }).pointsTarget;
       nextPointsTarget = extractPointsTarget(targetCandidate);
+
+      const intervalCandidate = (record.settings as { intervalMode?: unknown }).intervalMode;
+      nextIntervalMode = extractIntervalMode(intervalCandidate);
     }
   }
 
@@ -1274,7 +1294,8 @@ function applyAutomationState(value: unknown): void {
     buyPriceOffset !== nextBuyPriceOffset ||
     sellPriceOffset !== nextSellPriceOffset ||
     pointsFactor !== nextPointsFactor ||
-    pointsTarget !== nextPointsTarget;
+    pointsTarget !== nextPointsTarget ||
+    intervalMode !== nextIntervalMode;
 
   if (stateChanged) {
     // eslint-disable-next-line no-console
@@ -1285,6 +1306,7 @@ function applyAutomationState(value: unknown): void {
       sellPriceOffset: nextSellPriceOffset,
       pointsFactor: nextPointsFactor,
       pointsTarget: nextPointsTarget,
+      intervalMode: nextIntervalMode,
     });
   }
 
@@ -1294,6 +1316,7 @@ function applyAutomationState(value: unknown): void {
   sellPriceOffset = nextSellPriceOffset;
   pointsFactor = nextPointsFactor;
   pointsTarget = nextPointsTarget;
+  intervalMode = nextIntervalMode;
 
   if (!automationEnabled) {
     teardownPolling();
@@ -1408,6 +1431,13 @@ function clampPointsTarget(value: number): number {
   return floored;
 }
 
+function extractIntervalMode(value: unknown): IntervalMode {
+  if (value === 'fast' || value === 'medium') {
+    return value;
+  }
+  return DEFAULT_INTERVAL_MODE;
+}
+
 async function refreshAutomationState(): Promise<void> {
   await new Promise<void>((resolve) => {
     chrome.storage.local.get(STORAGE_KEY, (result) => {
@@ -1444,11 +1474,13 @@ async function configureLimitOrder(params: {
 
   await ensureLimitOrderMode(orderPanel);
 
+  const delayConfig = getConfigureLimitOrderDelay();
+
   const priceInput = orderPanel.querySelector<HTMLInputElement>('#limitPrice');
   if (!priceInput) {
     throw new Error('Limit price input not found.');
   }
-  await waitRandomDelay();
+  await waitRandomDelay(delayConfig.min, delayConfig.max);
   setReactInputValue(priceInput, buyPriceValue);
   await waitForAnimationFrame();
 
@@ -1456,7 +1488,7 @@ async function configureLimitOrder(params: {
   if (toggleChanged) {
     await waitForAnimationFrame();
   }
-  await waitRandomDelay();
+  await waitRandomDelay(delayConfig.min, delayConfig.max);
 
   const slider = orderPanel.querySelector<HTMLInputElement>('input.bn-slider');
   if (!slider) {
@@ -1469,7 +1501,7 @@ async function configureLimitOrder(params: {
   slider.dispatchEvent(new Event('input', { bubbles: true }));
   slider.dispatchEvent(new Event('change', { bubbles: true }));
   await waitForAnimationFrame();
-  await waitRandomDelay();
+  await waitRandomDelay(delayConfig.min, delayConfig.max);
 
   const locale = getPageLocale();
   const reversePricePlaceholder = locale === 'zh-CN' ? '限价卖出' : 'Limit Sell';
@@ -1485,7 +1517,7 @@ async function configureLimitOrder(params: {
   console.log('[dddd-alpah-extension] 设置卖出价格:', sellPriceValue);
   setReactInputValue(reversePriceInput, sellPriceValue);
   await waitForAnimationFrame();
-  await waitRandomDelay();
+  await waitRandomDelay(delayConfig.min, delayConfig.max);
 
   const buyButton = orderPanel.querySelector<HTMLButtonElement>('button.bn-button__buy');
   if (!buyButton) {
@@ -1591,7 +1623,7 @@ function ensureReverseOrderToggle(orderPanel: HTMLElement): boolean {
 function scheduleOrderConfirmationClick(): void {
   const ATTEMPT_DURATION_MS = 2_000;
   const ATTEMPT_INTERVAL_MS = 100;
-  const INITIAL_DELAY_MS = randomIntInRange(300, 800);
+  const INITIAL_DELAY_MS = randomIntInRange(500, 800);
 
   // eslint-disable-next-line no-console
   console.log(
@@ -1692,6 +1724,15 @@ function formatNumberFixedDecimals(value: number, fractionDigits: number): strin
 }
 
 function extractAvailableUsdt(orderPanel: HTMLElement): number | null {
+  // First, find and click the buy button to ensure we're on the buy tab
+  const buyButton = orderPanel.querySelector('button.bn-button__buy') as HTMLButtonElement;
+  if (buyButton && !buyButton.classList.contains('active')) {
+    // Click the buy button if it's not already active
+    buyButton.click();
+    // Give it a moment to update the UI
+    // Note: This is synchronous, but the UI should update quickly
+  }
+
   const locale = getPageLocale();
   const labelText = locale === 'zh-CN' ? '可用' : 'Available';
   const label = findElementWithExactText(orderPanel, labelText);
@@ -1744,6 +1785,13 @@ function delay(milliseconds: number): Promise<void> {
 function waitRandomDelay(min = 500, max = 1_000): Promise<void> {
   const duration = randomIntInRange(min, max);
   return delay(duration);
+}
+
+function getConfigureLimitOrderDelay(): { min: number; max: number } {
+  if (intervalMode === 'fast') {
+    return { min: 300, max: 600 };
+  }
+  return { min: 500, max: 1_000 };
 }
 
 function randomIntInRange(min: number, max: number): number {

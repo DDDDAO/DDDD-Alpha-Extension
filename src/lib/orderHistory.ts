@@ -29,12 +29,12 @@ export interface OrderHistorySummary {
 
 export type MultiplierLookup = (alphaId: string) => number;
 
-export function buildOrderHistoryUrl(now = new Date()): string {
+export function buildOrderHistoryUrl(now = new Date(), page = 1): string {
   const startTimeUtc = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
   const endTimeMs = now.getTime();
 
   const params = new URLSearchParams({
-    page: '1',
+    page: String(page),
     rows: '100',
     orderStatus: ORDER_HISTORY_STATUS_FILTER,
     side: 'BUY',
@@ -43,6 +43,23 @@ export function buildOrderHistoryUrl(now = new Date()): string {
   });
 
   return `${ORDER_HISTORY_ENDPOINT}?${params.toString()}`;
+}
+
+/**
+ * 合并多个订单历史响应的数据
+ */
+export function mergeOrderHistoryData(
+  responses: BinanceOrderHistoryResponse[],
+): BinanceOrderHistoryItem[] {
+  const allItems: BinanceOrderHistoryItem[] = [];
+
+  for (const response of responses) {
+    if (response.code === '000000' && Array.isArray(response.data)) {
+      allItems.push(...response.data);
+    }
+  }
+
+  return allItems;
 }
 
 export function summarizeOrderHistoryData(

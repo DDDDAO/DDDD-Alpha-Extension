@@ -18,7 +18,12 @@ import {
   type RuntimeMessage,
   type TaskResultMeta,
 } from '../lib/messages.js';
-import { buildOrderHistoryUrl, summarizeOrderHistoryData } from '../lib/orderHistory.js';
+import {
+  type BinanceOrderHistoryResponse,
+  buildOrderHistoryUrl,
+  mergeOrderHistoryData,
+  summarizeOrderHistoryData,
+} from '../lib/orderHistory.js';
 
 const ORDER_PLACEMENT_COOLDOWN_MS = 5_000;
 const LIMIT_STATE_TIMEOUT_MS = 2_000;
@@ -211,9 +216,61 @@ async function performOrderHistoryRequest(
   }
 }
 
+/**
+ * 获取所有页面的订单历史数据
+ */
+async function fetchAllOrderHistoryPages(
+  csrfToken: string,
+  now = new Date(),
+): Promise<unknown[] | null> {
+  const allResponses: unknown[] = [];
+  let currentPage = 1;
+  const maxPages = 10; // 最多查询10页，防止无限循环
+
+  while (currentPage <= maxPages) {
+    const targetUrl = buildOrderHistoryUrl(now, currentPage);
+    // eslint-disable-next-line no-console
+    console.log(`[dddd-alpha-extension] Fetching order history page ${currentPage}`);
+
+    const response = await performOrderHistoryRequest(targetUrl, csrfToken);
+
+    if (!response.success || !response.data) {
+      if (currentPage === 1) {
+        // 第一页就失败了，返回null
+        return null;
+      }
+      // 后续页面失败，返回已获取的数据
+      break;
+    }
+
+    allResponses.push(response.data);
+
+    // 检查是否还有更多数据
+    type ResponseData = { data?: unknown[] };
+    const data = response.data as ResponseData;
+    if (data?.data && Array.isArray(data.data)) {
+      const itemCount = data.data.length;
+      // eslint-disable-next-line no-console
+      console.log(`[dddd-alpha-extension] Page ${currentPage} returned ${itemCount} items`);
+
+      if (itemCount < 100) {
+        // 返回的数据少于100条，说明已经是最后一页了
+        break;
+      }
+    } else {
+      break;
+    }
+
+    currentPage++;
+  }
+
+  // eslint-disable-next-line no-console
+  console.log(`[dddd-alpha-extension] Fetched ${allResponses.length} pages of order history`);
+  return allResponses;
+}
+
 async function refreshOrderHistorySnapshotForAutomation(): Promise<OrderHistorySnapshotPayload | null> {
   try {
-    const targetUrl = buildOrderHistoryUrl();
     const csrfToken = resolveCsrfToken();
     if (!csrfToken) {
       // eslint-disable-next-line no-console
@@ -228,18 +285,26 @@ async function refreshOrderHistorySnapshotForAutomation(): Promise<OrderHistoryS
       return null;
     }
 
-    const response = await performOrderHistoryRequest(targetUrl, csrfToken);
+    const now = new Date();
+    const allResponses = await fetchAllOrderHistoryPages(csrfToken, now);
     loginErrorDispatched = false;
-    if (!response.success || !response.data) {
-      if (response.message) {
-        // eslint-disable-next-line no-console
-        console.warn('[dddd-alpah-extension] Order history refresh failed:', response.message);
-      }
+
+    if (!allResponses || allResponses.length === 0) {
+      // eslint-disable-next-line no-console
+      console.warn('[dddd-alpah-extension] No order history data fetched');
       return null;
     }
 
+    // 合并所有页面的数据
+    const mergedItems = mergeOrderHistoryData(allResponses as BinanceOrderHistoryResponse[]);
+    const mergedResponse = {
+      code: '000000',
+      message: null,
+      data: mergedItems,
+    };
+
     const alphaMap = await getAlphaMultiplierMap();
-    const summary = summarizeOrderHistoryData(response.data, (alphaId) =>
+    const summary = summarizeOrderHistoryData(mergedResponse, (alphaId) =>
       lookupAlphaMultiplier(alphaMap, alphaId),
     );
 
@@ -366,13 +431,44 @@ chrome.runtime.onMessage.addListener((message: RuntimeMessage, _sender, sendResp
 
   if (message.type === 'FETCH_ORDER_HISTORY') {
     void (async () => {
-      const targetUrl = message.payload?.url;
-      const response = await performOrderHistoryRequest(targetUrl ?? '');
-      if (response.success) {
-        // eslint-disable-next-line no-console
-        console.log('[dddd-alpah-extension] Order history fetched successfully');
+      const csrfToken = resolveCsrfToken();
+      if (!csrfToken) {
+        sendResponse({
+          success: false,
+          message: '无法获取 CSRF token，请确保已登录',
+        } satisfies FetchOrderHistoryResponse);
+        return;
       }
-      sendResponse(response);
+
+      const now = new Date();
+      const allResponses = await fetchAllOrderHistoryPages(csrfToken, now);
+
+      if (!allResponses || allResponses.length === 0) {
+        sendResponse({
+          success: false,
+          message: '无法获取订单历史数据',
+        } satisfies FetchOrderHistoryResponse);
+        return;
+      }
+
+      // 合并所有页面的数据
+      const mergedItems = mergeOrderHistoryData(allResponses as BinanceOrderHistoryResponse[]);
+      const mergedResponse = {
+        code: '000000',
+        message: null,
+        data: mergedItems,
+      };
+
+      // eslint-disable-next-line no-console
+      console.log(
+        `[dddd-alpha-extension] Order history fetched successfully, total items: ${mergedItems.length}`,
+      );
+
+      sendResponse({
+        success: true,
+        status: 200,
+        data: mergedResponse,
+      } satisfies FetchOrderHistoryResponse);
     })();
 
     return true;

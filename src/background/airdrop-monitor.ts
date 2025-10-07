@@ -2,7 +2,12 @@
  * 空投监控模块 - Service Worker
  */
 
-import type { AirdropApiResponse, AirdropData, ProcessedAirdrop } from '../lib/airdrop.js';
+import type {
+  AirdropApiResponse,
+  AirdropData,
+  PricesApiResponse,
+  ProcessedAirdrop,
+} from '../lib/airdrop.js';
 import { AIRDROP_STORAGE_KEY, processAirdropApiResponse } from '../lib/airdrop.js';
 
 // 常量定义
@@ -61,6 +66,35 @@ async function saveAirdropData(data: AirdropData): Promise<void> {
   }
 }
 
+async function fetchJson<T>(url: string): Promise<T> {
+  const response = await fetch(url, {
+    cache: 'no-store',
+  });
+
+  const contentType = response.headers.get('content-type');
+  const bodyText = await response.text();
+
+  if (!response.ok) {
+    throw new Error(
+      `Request failed (${response.status} ${response.statusText}) - sample: ${bodyText.slice(0, 120)}`,
+    );
+  }
+
+  if (!contentType || !contentType.toLowerCase().includes('application/json')) {
+    throw new Error(
+      `Expected JSON but received ${contentType ?? 'unknown'} - sample: ${bodyText.slice(0, 120)}`,
+    );
+  }
+
+  try {
+    return JSON.parse(bodyText) as T;
+  } catch (error) {
+    throw new Error(
+      `Failed to parse JSON: ${(error as Error).message} - sample: ${bodyText.slice(0, 120)}`,
+    );
+  }
+}
+
 /**
  * 【复刻】获取并保存空投数据 - 完全按照 binance helper 的逻辑：直接GET请求
  */
@@ -73,12 +107,7 @@ async function fetchAndSaveAirdropData(): Promise<void> {
     const airdropUrl = `${ALPHA123_API_URL}?t=${timestamp}&fresh=1`;
     console.log(`[AirdropMonitor] 🌐 发起GET请求: ${airdropUrl}`);
 
-    const airdropResponse = await fetch(airdropUrl);
-    console.log(
-      `[AirdropMonitor] ✅ 响应状态: ${airdropResponse.status} ${airdropResponse.statusText}`,
-    );
-
-    const rawData: AirdropApiResponse = await airdropResponse.json();
+    const rawData = await fetchJson<AirdropApiResponse>(airdropUrl);
     console.log('[AirdropMonitor] 📦 JSON解析完成');
 
     if (!rawData?.airdrops || rawData.airdrops.length === 0) {
@@ -87,29 +116,31 @@ async function fetchAndSaveAirdropData(): Promise<void> {
 
     console.log('[AirdropMonitor] 获取到空投数据:', rawData.airdrops.length, '个');
 
-    // 2. 使用 processAirdropApiResponse 处理数据（包含过期判断、时间转换等完整逻辑）
-    const processedData = processAirdropApiResponse(rawData);
+    // 2. 获取语言设置
+    const storageResult = await chrome.storage.local.get('dddd-alpha-language');
+    const locale = (storageResult['dddd-alpha-language'] as string | undefined) || 'zh-CN';
+    console.log('[AirdropMonitor] 使用语言:', locale);
+
+    // 3. 使用 processAirdropApiResponse 处理数据（包含过期判断、时间转换等完整逻辑）
+    const processedData = processAirdropApiResponse(rawData, locale);
 
     console.log('[AirdropMonitor] 今日空投:', processedData.today.length, '个');
     console.log('[AirdropMonitor] 未来空投:', processedData.forecast.length, '个');
 
-    // 3. 【复刻】直接GET请求获取价格数据
+    // 4. 【复刻】直接GET请求获取价格数据
     const priceTimestamp = getAlignedTimestamp();
     const priceUrl = `${ALPHA123_PRICES_URL}?batch=all&t=${priceTimestamp}`;
     console.log(`[AirdropMonitor] 🌐 发起价格请求: ${priceUrl}`);
 
-    const priceResponse = await fetch(priceUrl);
-    console.log(`[AirdropMonitor] ✅ 价格响应: ${priceResponse.status}`);
-
-    const priceData = await priceResponse.json();
+    const priceData = await fetchJson<PricesApiResponse>(priceUrl);
 
     console.log(
       '[AirdropMonitor] 价格数据:',
-      priceData?.success ? Object.keys(priceData.prices).length : 0,
+      priceData?.success ? Object.keys(priceData.prices ?? {}).length : 0,
       '个币种',
     );
 
-    // 4. 【复刻】添加价格信息 - 完全按照原代码逻辑
+    // 5. 【复刻】添加价格信息 - 完全按照原代码逻辑
     const addPriceInfo = (airdrop: ProcessedAirdrop) => {
       if (priceData?.success && priceData.prices?.[airdrop.symbol]) {
         const priceInfo = priceData.prices[airdrop.symbol];
@@ -121,7 +152,9 @@ async function fetchAndSaveAirdropData(): Promise<void> {
           if (!Number.isNaN(quantity) && quantity > 0) {
             airdrop.price = price;
             const value = Number(price) * quantity;
-            airdrop.estimatedValue = `$${value.toFixed(2)}`;
+            // 保留3个有效数字
+            const formattedValue = Number.parseFloat(value.toPrecision(3));
+            airdrop.estimatedValue = `$${formattedValue}`;
           }
         }
       }
@@ -130,7 +163,7 @@ async function fetchAndSaveAirdropData(): Promise<void> {
     processedData.today.forEach(addPriceInfo);
     processedData.forecast.forEach(addPriceInfo);
 
-    // 5. 保存数据
+    // 6. 保存数据
     const finalData: AirdropData = {
       today: processedData.today,
       forecast: processedData.forecast,

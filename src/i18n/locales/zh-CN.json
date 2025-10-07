@@ -16,7 +16,7 @@
     "multiplier": "倍"
   },
   "settings": {
-    "title": "设置",
+    "title": "自动化设置",
     "priceOffset": "价格偏移 (%)",
     "priceOffsetTooltip": "工具会自动实时刷新平均价格,并以价格偏移设置进行下单。正值(+1%)表示在基准价上加1%,负值(-1%)表示在基准价上减1%。横盘模式(买+0.01%,卖-0.01%)适合价格稳定时使用;上涨模式(买+0.01%,卖+0.02%)适合价格上涨时使用;自定义模式支持-5%到+5%的灵活配置。",
     "buyPriceOffset": "买入价差 (%)",
@@ -81,10 +81,14 @@
     "tge": "TGE",
     "grab": "秒杀",
     "quantity": "空投数量",
-    "threshold": "积分门槛",
+    "threshold": "积分",
     "phase": "阶段",
     "phaseLabel": "阶段",
-    "tomorrow": "明天"
+    "tomorrow": "明天",
+    "tba": "待公布",
+    "symbol": "币种",
+    "time": "时间",
+    "price": "价格"
   },
   "footer": {
     "madeBy": "Made with ❤️ by",

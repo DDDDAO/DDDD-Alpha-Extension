@@ -66,7 +66,7 @@ chrome.alarms.onAlarm.addListener((alarm) => {
   void runAutomationCycle();
 });
 
-chrome.runtime.onMessage.addListener((message: RuntimeMessage, _sender, sendResponse) => {
+chrome.runtime.onMessage.addListener((message: RuntimeMessage, sender, sendResponse) => {
   if (message.type === 'BALANCE_UPDATE') {
     const currentBalanceValue = normalizeBalance(message.payload?.currentBalance);
     const tokenSymbol = normalizeTokenSymbol(message.payload?.tokenSymbol);
@@ -415,6 +415,20 @@ chrome.runtime.onMessage.addListener((message: RuntimeMessage, _sender, sendResp
     return true;
   }
 
+  if (message.type === 'FOCUS_WINDOW') {
+    void (async () => {
+      try {
+        const targetWindowId = sender.tab?.windowId;
+        const targetTabId = sender.tab?.id;
+        await handleFocusWindow(targetWindowId, targetTabId);
+        sendResponse({ acknowledged: true });
+      } catch (error) {
+        sendResponse({ acknowledged: false, error: normalizeError(error) });
+      }
+    })();
+    return true;
+  }
+
   return false;
 });
 
@@ -605,6 +619,56 @@ async function handleControlStop(): Promise<void> {
     isRunning: false,
     sessionStoppedAt,
   }));
+}
+
+async function handleFocusWindow(windowId?: number, tabId?: number): Promise<void> {
+  try {
+    let targetWindowId: number | undefined | null = windowId ?? null;
+
+    if (tabId !== undefined) {
+      try {
+        const tab = await chrome.tabs.get(tabId);
+        if (tab?.windowId !== undefined) {
+          targetWindowId = tab.windowId;
+        }
+
+        if (tab?.id !== undefined && tab.active !== true) {
+          await chrome.tabs.update(tab.id, { active: true });
+        }
+      } catch (tabError) {
+        // eslint-disable-next-line no-console
+        console.warn('[dddd-alpha-extension] Failed to resolve tab for focus:', tabError);
+      }
+    }
+
+    if (!targetWindowId) {
+      try {
+        const lastFocused = await chrome.windows.getLastFocused({ populate: false });
+        targetWindowId = lastFocused?.id ?? null;
+      } catch (lastFocusedError) {
+        // eslint-disable-next-line no-console
+        console.warn('[dddd-alpha-extension] Failed to get last focused window:', lastFocusedError);
+      }
+    }
+
+    if (!targetWindowId) {
+      const windows = await chrome.windows.getAll();
+      const focusedWindow = windows.find((win) => win.focused);
+      targetWindowId = focusedWindow?.id ?? windows[0]?.id ?? null;
+    }
+
+    if (targetWindowId) {
+      await chrome.windows.update(targetWindowId, {
+        focused: true,
+        drawAttention: true,
+        state: 'normal',
+      });
+    }
+  } catch (error) {
+    // eslint-disable-next-line no-console
+    console.error('[dddd-alpha-extension] Failed to focus window:', error);
+    throw error;
+  }
 }
 
 async function clearAutomationAlarm(): Promise<void> {

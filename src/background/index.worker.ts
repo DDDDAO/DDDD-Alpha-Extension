@@ -5,9 +5,25 @@ import {
   SUCCESSFUL_TRADES_LIMIT_MESSAGE,
 } from '../config/defaults.js';
 import { calculateAlphaPointStats } from '../lib/alphaPoints.js';
+import {
+  AutomationMessageError,
+  ContentScriptUnavailableError,
+  normalizeDetail,
+  normalizeError,
+  TabUnavailableError,
+} from '../lib/errorHandling.js';
 import type { RuntimeMessage } from '../lib/messages.js';
 import { getSchedulerState, updateSchedulerState } from '../lib/storage.js';
 import { getTab } from '../lib/tabs.js';
+import { delay } from '../lib/timing.js';
+import {
+  normalizeBalance,
+  normalizeCountDelta,
+  normalizeTokenSymbol,
+  normalizeVolumeDelta,
+  sanitizeTabId,
+  sanitizeTokenAddress,
+} from '../lib/validators.js';
 import { initAirdropMonitor } from './airdrop-monitor.js';
 import { registerHeaderModificationRules } from './requestHeaderModifier.js';
 
@@ -17,30 +33,6 @@ const BINANCE_ALPHA_PATTERN =
 const { alarmName, intervalMinutes } = DEFAULT_AUTOMATION;
 const MIN_ALARM_INTERVAL_MINUTES = 0.5;
 const INITIAL_DELAY_MINUTES = 0.01;
-
-class AutomationMessageError extends Error {
-  constructor(
-    message: string,
-    readonly code: string,
-  ) {
-    super(message);
-    this.name = 'AutomationMessageError';
-  }
-}
-
-class ContentScriptUnavailableError extends AutomationMessageError {
-  constructor(message = 'Content script unavailable') {
-    super(message, 'CONTENT_SCRIPT_UNAVAILABLE');
-    this.name = 'ContentScriptUnavailableError';
-  }
-}
-
-class TabUnavailableError extends AutomationMessageError {
-  constructor(message = 'Tab unavailable') {
-    super(message, 'TAB_UNAVAILABLE');
-    this.name = 'TabUnavailableError';
-  }
-}
 
 let immediateRunScheduled = false;
 
@@ -705,23 +697,6 @@ async function findActiveBinanceAlphaTab(
   return undefined;
 }
 
-function sanitizeTokenAddress(value?: string): string | undefined {
-  if (!value) {
-    return undefined;
-  }
-
-  const match = value.trim().match(/0x[a-fA-F0-9]{40}/u);
-  return match ? match[0].toLowerCase() : undefined;
-}
-
-function sanitizeTabId(value?: number): number | undefined {
-  if (typeof value !== 'number' || !Number.isFinite(value)) {
-    return undefined;
-  }
-
-  return value;
-}
-
 const MAX_MESSAGE_ATTEMPTS = 12;
 const RECEIVING_END_MISSING_PATTERN = /Receiving end does not exist/i;
 const TAB_UNAVAILABLE_PATTERN = /(No tab with id|The tab was closed|Tab .* not found)/i;
@@ -770,94 +745,4 @@ async function sendMessageToTab(
 
     throw new AutomationMessageError(messageText, 'MESSAGE_FAILED');
   }
-}
-
-function delay(milliseconds: number): Promise<void> {
-  return new Promise((resolve) => {
-    setTimeout(resolve, milliseconds);
-  });
-}
-
-function normalizeVolumeDelta(value: unknown): number {
-  const numeric = typeof value === 'number' ? value : Number(value);
-  if (!Number.isFinite(numeric) || numeric <= 0) {
-    return 0;
-  }
-
-  return numeric;
-}
-
-function normalizeCountDelta(value: unknown): number {
-  const numeric = typeof value === 'number' ? value : Number(value);
-  if (!Number.isFinite(numeric) || numeric <= 0) {
-    return 0;
-  }
-
-  return Math.floor(numeric);
-}
-
-function normalizeBalance(value: unknown): number | undefined {
-  const numeric = typeof value === 'number' ? value : Number(value);
-  if (!Number.isFinite(numeric) || numeric < 0) {
-    return undefined;
-  }
-
-  return numeric;
-}
-
-function normalizeTokenSymbol(value: unknown): string | undefined {
-  if (typeof value !== 'string') {
-    return undefined;
-  }
-
-  const trimmed = value.trim();
-  if (trimmed.length === 0) {
-    return undefined;
-  }
-
-  return trimmed;
-}
-
-function normalizeError(error: unknown): string {
-  if (error instanceof Error) {
-    return error.message;
-  }
-
-  if (error && typeof error === 'object') {
-    const message = (error as { message?: unknown }).message;
-    if (typeof message === 'string' && message.trim().length > 0) {
-      return message;
-    }
-  }
-
-  try {
-    return String(error);
-  } catch {
-    return 'Unknown error';
-  }
-}
-
-function normalizeDetail(detail: unknown): string | undefined {
-  if (detail === undefined || detail === null) {
-    return undefined;
-  }
-
-  if (typeof detail === 'string') {
-    return detail;
-  }
-
-  if (detail && typeof detail === 'object') {
-    const message = (detail as { message?: unknown }).message;
-    if (typeof message === 'string') {
-      return message;
-    }
-
-    try {
-      return JSON.stringify(detail);
-    } catch {
-      return String(detail);
-    }
-  }
-
-  return String(detail);
 }

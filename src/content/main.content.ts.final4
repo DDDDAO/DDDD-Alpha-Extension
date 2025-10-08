@@ -1,0 +1,1275 @@
+import {
+  DEFAULT_BUY_PRICE_OFFSET_PERCENT,
+  DEFAULT_INTERVAL_MODE,
+  DEFAULT_POINTS_FACTOR,
+  DEFAULT_POINTS_TARGET,
+  DEFAULT_PRICE_OFFSET_PERCENT,
+  DEFAULT_SELL_PRICE_OFFSET_PERCENT,
+  FAST_MODE_MAX_DELAY,
+  FAST_MODE_MIN_DELAY,
+  type IntervalMode,
+  MAX_SUCCESSFUL_TRADES,
+  MEDIUM_MODE_MAX_DELAY,
+  MEDIUM_MODE_MIN_DELAY,
+  SUCCESSFUL_TRADES_LIMIT_MESSAGE,
+} from '../config/defaults.js';
+import { SELECTORS } from '../config/selectors.js';
+import { STORAGE_KEY, TOKEN_DIRECTORY_STORAGE_KEY } from '../config/storageKey.js';
+import { calculateAlphaPointStats } from '../lib/alphaPoints.js';
+import { md5 } from '../lib/md5.js';
+import {
+  type FetchOrderHistoryResponse,
+  type OrderHistorySnapshotPayload,
+  postRuntimeMessage,
+  type RuntimeMessage,
+  type TaskResultMeta,
+} from '../lib/messages.js';
+import {
+  type BinanceOrderHistoryResponse,
+  buildOrderHistoryUrl,
+  mergeOrderHistoryData,
+  summarizeOrderHistoryData,
+} from '../lib/orderHistory.js';
+import { OrderMonitor } from './automation/orderMonitor.js';
+import { type OrderPlacementResult, OrderPlacer } from './automation/orderPlacer.js';
+// 新增模块导入
+import { VWAPCalculator } from './automation/vwapCalculator.js';
+import { AlertManager } from './ui/alertManager.js';
+import { DOMController } from './ui/domController.js';
+
+function getCookieValue(name: string): string | null {
+  const pattern = new RegExp(`(?:^|;\\s*)${name}=([^;]*)`);
+  const match = document.cookie.match(pattern);
+  if (!match) {
+    return null;
+  }
+
+  const value = match[1];
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}
+
+function resolveCsrfToken(): string | null {
+  const cookieValue = getCookieValue('cr00');
+  if (!cookieValue) {
+    return null;
+  }
+  return md5(cookieValue);
+}
+
+
+function invalidateTokenDirectoryCache(): void {
+  cachedAlphaMultiplierMap = null;
+  cachedAlphaMultiplierTimestamp = 0;
+}
+
+function extractTokenDirectory(value: unknown): Record<string, TokenDirectoryRecord> | null {
+  if (!value || typeof value !== 'object') {
+    return null;
+  }
+
+  const container = value as TokenDirectoryContainer;
+  const directoryCandidate = container.directory ?? value;
+
+  if (!directoryCandidate || typeof directoryCandidate !== 'object') {
+    return null;
+  }
+
+  return directoryCandidate as Record<string, TokenDirectoryRecord>;
+}
+
+async function getAlphaMultiplierMap(): Promise<Record<string, number>> {
+  const now = Date.now();
+  if (
+    cachedAlphaMultiplierMap &&
+    now - cachedAlphaMultiplierTimestamp < MULTIPLIER_CACHE_DURATION_MS
+  ) {
+    return cachedAlphaMultiplierMap;
+  }
+
+  const directory = await new Promise<Record<string, TokenDirectoryRecord> | null>((resolve) => {
+    chrome.storage.local.get(TOKEN_DIRECTORY_STORAGE_KEY, (result) => {
+      resolve(extractTokenDirectory(result[TOKEN_DIRECTORY_STORAGE_KEY]));
+    });
+  });
+
+  const alphaMap: Record<string, number> = {};
+
+  if (directory) {
+    for (const entry of Object.values(directory)) {
+      if (!entry || typeof entry !== 'object') {
+        continue;
+      }
+
+      const alphaIdRaw = typeof entry.alphaId === 'string' ? entry.alphaId.trim() : '';
+      if (alphaIdRaw.length === 0) {
+        continue;
+      }
+
+      const multiplierRaw = entry.mulPoint;
+      const multiplier =
+        typeof multiplierRaw === 'number' ? multiplierRaw : Number(multiplierRaw ?? NaN);
+      if (!Number.isFinite(multiplier) || multiplier <= 0) {
+        continue;
+      }
+
+      alphaMap[alphaIdRaw.toUpperCase()] = multiplier;
+    }
+  }
+
+  cachedAlphaMultiplierMap = alphaMap;
+  cachedAlphaMultiplierTimestamp = now;
+  return alphaMap;
+}
+
+function lookupAlphaMultiplier(alphaMap: Record<string, number>, alphaId: string): number {
+  if (alphaId.length === 0) {
+    return 1;
+  }
+
+  const candidate = alphaMap[alphaId.toUpperCase()];
+  if (!Number.isFinite(candidate) || candidate === undefined || candidate <= 0) {
+    return 1;
+  }
+
+  return candidate;
+}
+
+async function performOrderHistoryRequest(
+  targetUrl: string,
+  csrfToken?: string | null,
+): Promise<FetchOrderHistoryResponse> {
+  if (typeof targetUrl !== 'string' || targetUrl.length === 0) {
+    return {
+      success: false,
+      message: 'Invalid order history URL',
+    } satisfies FetchOrderHistoryResponse;
+  }
+
+  const resolvedToken = csrfToken && csrfToken.length > 0 ? csrfToken : resolveCsrfToken();
+  if (!resolvedToken) {
+    return {
+      success: false,
+      message: '请先登录币安',
+    } satisfies FetchOrderHistoryResponse;
+  }
+
+  try {
+    const response = await fetch(targetUrl, {
+      method: 'GET',
+      credentials: 'include',
+      cache: 'no-store',
+      headers: {
+        clienttype: 'web',
+        csrftoken: resolvedToken,
+        Accept: 'application/json, text/plain, */*',
+      },
+    });
+
+    const status = response.status;
+    let data: unknown = null;
+
+    try {
+      const text = await response.text();
+      data = text ? JSON.parse(text) : null;
+    } catch (parseError) {
+      // eslint-disable-next-line no-console
+      console.warn(
+        '[dddd-alpah-extension] Failed to parse order history response JSON',
+        parseError,
+      );
+    }
+
+    if (!response.ok) {
+      return {
+        success: false,
+        status,
+        data,
+        message: `Order history request failed with status ${status}`,
+      } satisfies FetchOrderHistoryResponse;
+    }
+
+    return {
+      success: true,
+      status,
+      data,
+    } satisfies FetchOrderHistoryResponse;
+  } catch (error) {
+    const messageText = error instanceof Error ? error.message : String(error);
+    // eslint-disable-next-line no-console
+    console.error('[dddd-alpah-extension] Order history fetch failed:', messageText);
+    return {
+      success: false,
+      message: messageText,
+    } satisfies FetchOrderHistoryResponse;
+  }
+}
+
+/**
+ * 获取所有页面的订单历史数据
+ */
+async function fetchAllOrderHistoryPages(
+  csrfToken: string,
+  now = new Date(),
+): Promise<unknown[] | null> {
+  const allResponses: unknown[] = [];
+  let currentPage = 1;
+  const maxPages = 10; // 最多查询10页，防止无限循环
+
+  while (currentPage <= maxPages) {
+    const targetUrl = buildOrderHistoryUrl(now, currentPage);
+    // eslint-disable-next-line no-console
+    console.log(`[dddd-alpha-extension] Fetching order history page ${currentPage}`);
+
+    const response = await performOrderHistoryRequest(targetUrl, csrfToken);
+
+    if (!response.success || !response.data) {
+      if (currentPage === 1) {
+        // 第一页就失败了，返回null
+        return null;
+      }
+      // 后续页面失败，返回已获取的数据
+      break;
+    }
+
+    allResponses.push(response.data);
+
+    // 检查是否还有更多数据
+    type ResponseData = { data?: unknown[] };
+    const data = response.data as ResponseData;
+    if (data?.data && Array.isArray(data.data)) {
+      const itemCount = data.data.length;
+      // eslint-disable-next-line no-console
+      console.log(`[dddd-alpha-extension] Page ${currentPage} returned ${itemCount} items`);
+
+      if (itemCount < 100) {
+        // 返回的数据少于100条，说明已经是最后一页了
+        break;
+      }
+    } else {
+      break;
+    }
+
+    currentPage++;
+  }
+
+  // eslint-disable-next-line no-console
+  console.log(`[dddd-alpha-extension] Fetched ${allResponses.length} pages of order history`);
+  return allResponses;
+}
+
+async function refreshOrderHistorySnapshotForAutomation(): Promise<OrderHistorySnapshotPayload | null> {
+  try {
+    const csrfToken = resolveCsrfToken();
+    if (!csrfToken) {
+      // eslint-disable-next-line no-console
+      console.warn('[dddd-alpah-extension] Unable to resolve csrf token for order history refresh');
+      if (!loginErrorDispatched) {
+        await dispatchRuntimeMessage({
+          type: 'TASK_ERROR',
+          payload: { message: '请先登录币安' },
+        });
+        loginErrorDispatched = true;
+      }
+      return null;
+    }
+
+    const now = new Date();
+    const allResponses = await fetchAllOrderHistoryPages(csrfToken, now);
+    loginErrorDispatched = false;
+
+    if (!allResponses || allResponses.length === 0) {
+      // eslint-disable-next-line no-console
+      console.warn('[dddd-alpah-extension] No order history data fetched');
+      return null;
+    }
+
+    // 合并所有页面的数据
+    const mergedItems = mergeOrderHistoryData(allResponses as BinanceOrderHistoryResponse[]);
+    const mergedResponse = {
+      code: '000000',
+      message: null,
+      data: mergedItems,
+    };
+
+    const alphaMap = await getAlphaMultiplierMap();
+    const summary = summarizeOrderHistoryData(mergedResponse, (alphaId) =>
+      lookupAlphaMultiplier(alphaMap, alphaId),
+    );
+
+    const { points: alphaPoints, nextThresholdDelta } = calculateAlphaPointStats(
+      summary.totalBuyVolume,
+    );
+    const snapshot: OrderHistorySnapshotPayload = {
+      date: new Date().toISOString().slice(0, 10),
+      totalBuyVolume: summary.totalBuyVolume,
+      buyOrderCount: summary.buyOrderCount,
+      alphaPoints,
+      nextThresholdDelta,
+      fetchedAt: Date.now(),
+      source: 'automation',
+    };
+
+    await dispatchRuntimeMessage({
+      type: 'ORDER_HISTORY_SNAPSHOT',
+      payload: snapshot,
+    });
+
+    return snapshot;
+  } catch (error) {
+    const messageText = error instanceof Error ? error.message : String(error);
+    // eslint-disable-next-line no-console
+    console.error('[dddd-alpah-extension] Failed to refresh order history snapshot:', messageText);
+    return null;
+  }
+}
+
+let evaluationInProgress = false;
+let loginErrorDispatched = false;
+let runtimeUnavailable = false;
+let automationEnabled = false;
+let automationStateWatcherInitialized = false;
+let priceOffsetPercent = DEFAULT_PRICE_OFFSET_PERCENT;
+let buyPriceOffset = DEFAULT_BUY_PRICE_OFFSET_PERCENT;
+let sellPriceOffset = DEFAULT_SELL_PRICE_OFFSET_PERCENT;
+let pointsFactor = DEFAULT_POINTS_FACTOR;
+let pointsTarget = DEFAULT_POINTS_TARGET;
+let intervalMode: IntervalMode = DEFAULT_INTERVAL_MODE;
+let nextEvaluationTimeoutId: number | undefined;
+let automationLoopActive = false;
+
+const MULTIPLIER_CACHE_DURATION_MS = 5 * 60_000;
+
+interface TokenDirectoryRecord {
+  mulPoint?: number | string | null;
+  alphaId?: string | null;
+}
+
+interface TokenDirectoryContainer {
+  directory?: Record<string, TokenDirectoryRecord>;
+}
+
+let cachedAlphaMultiplierMap: Record<string, number> | null = null;
+let cachedAlphaMultiplierTimestamp = 0;
+
+// 初始化新模块实例
+const domController = new DOMController();
+const vwapCalculator = new VWAPCalculator();
+const alertManager = new AlertManager();
+const orderMonitor = new OrderMonitor(domController, alertManager);
+const orderPlacer = new OrderPlacer(domController, orderMonitor);
+
+// 设置紧急停止回调
+orderMonitor.setEmergencyStopCallback(() => {
+  automationEnabled = false;
+  teardownPolling();
+});
+
+chrome.runtime.onMessage.addListener((message: RuntimeMessage, _sender, sendResponse) => {
+  // eslint-disable-next-line no-console
+  console.log('[dddd-alpah-extension] Received message:', message.type);
+
+  if (message.type === 'RUN_TASK') {
+    void handleAutomation().catch((error: unknown) => {
+      const messageText = error instanceof Error ? error.message : String(error);
+      // eslint-disable-next-line no-console
+      console.error('[dddd-alpah-extension] RUN_TASK error:', messageText);
+      void postRuntimeMessage({
+        type: 'TASK_ERROR',
+        payload: { message: messageText },
+      });
+    });
+
+    sendResponse({ acknowledged: true });
+    return true;
+  }
+
+  if (message.type === 'RUN_TASK_ONCE') {
+    // eslint-disable-next-line no-console
+    console.log('[dddd-alpah-extension] Starting manual run');
+    void handleManualRun().catch((error: unknown) => {
+      const messageText = error instanceof Error ? error.message : String(error);
+      // eslint-disable-next-line no-console
+      console.error('[dddd-alpah-extension] RUN_TASK_ONCE error:', messageText);
+      void postRuntimeMessage({
+        type: 'TASK_ERROR',
+        payload: { message: messageText },
+      });
+    });
+
+    sendResponse({ acknowledged: true });
+    return true;
+  }
+
+  if (message.type === 'REQUEST_TOKEN_SYMBOL') {
+    const tokenSymbol = domController.extractTokenSymbol();
+    // eslint-disable-next-line no-console
+    console.log('[dddd-alpah-extension] Token symbol requested:', tokenSymbol);
+    sendResponse({
+      acknowledged: Boolean(tokenSymbol),
+      tokenSymbol: tokenSymbol ?? null,
+    });
+    return true;
+  }
+
+  if (message.type === 'REQUEST_CURRENT_BALANCE') {
+    void (async () => {
+      const panel = domController.getTradingFormPanel();
+      let balanceValue: number | null = null;
+      if (panel) {
+        const extracted = await extractAvailableUsdt(panel);
+        if (extracted !== null && Number.isFinite(extracted)) {
+          balanceValue = extracted;
+        }
+      }
+
+      // eslint-disable-next-line no-console
+      console.log('[dddd-alpah-extension] Current balance requested:', balanceValue);
+      sendResponse({
+        acknowledged: balanceValue !== null,
+        currentBalance: balanceValue ?? null,
+      });
+    })();
+    return true;
+  }
+
+  if (message.type === 'FETCH_ORDER_HISTORY') {
+    void (async () => {
+      const csrfToken = resolveCsrfToken();
+      if (!csrfToken) {
+        sendResponse({
+          success: false,
+          message: '无法获取 CSRF token，请确保已登录',
+        } satisfies FetchOrderHistoryResponse);
+        return;
+      }
+
+      const now = new Date();
+      const allResponses = await fetchAllOrderHistoryPages(csrfToken, now);
+
+      if (!allResponses || allResponses.length === 0) {
+        sendResponse({
+          success: false,
+          message: '无法获取订单历史数据',
+        } satisfies FetchOrderHistoryResponse);
+        return;
+      }
+
+      // 合并所有页面的数据
+      const mergedItems = mergeOrderHistoryData(allResponses as BinanceOrderHistoryResponse[]);
+      const mergedResponse = {
+        code: '000000',
+        message: null,
+        data: mergedItems,
+      };
+
+      // eslint-disable-next-line no-console
+      console.log(
+        `[dddd-alpha-extension] Order history fetched successfully, total items: ${mergedItems.length}`,
+      );
+
+      sendResponse({
+        success: true,
+        status: 200,
+        data: mergedResponse,
+      } satisfies FetchOrderHistoryResponse);
+    })();
+
+    return true;
+  }
+
+  return false;
+});
+
+initializeAutomationStateWatcher();
+void sendInitialBalanceUpdate();
+// 不要立即启动监控，等待下单后再启动
+// startPendingOrderMonitor();
+
+async function sendInitialBalanceUpdate(): Promise<void> {
+  // 延迟5秒,确保页面有足够时间加载余额
+  await delay(5_000);
+
+  const tokenSymbol = extractTokenSymbol();
+  const panel = getTradingFormPanel();
+  let currentBalance: number | undefined;
+
+  if (panel) {
+    const extracted = await extractAvailableUsdt(panel);
+    if (extracted !== null && Number.isFinite(extracted)) {
+      currentBalance = extracted;
+    }
+  }
+
+  if (currentBalance !== undefined || tokenSymbol) {
+    await dispatchRuntimeMessage({
+      type: 'BALANCE_UPDATE',
+      payload: {
+        currentBalance,
+        tokenSymbol: tokenSymbol ?? undefined,
+      },
+    });
+  }
+}
+
+async function handleAutomation(): Promise<void> {
+  // eslint-disable-next-line no-console
+  console.log(
+    '[dddd-alpah-extension] handleAutomation started, automationEnabled:',
+    automationEnabled,
+  );
+
+  const needsLogin = checkForLoginPrompt();
+  if (needsLogin) {
+    // eslint-disable-next-line no-console
+    console.warn('[dddd-alpah-extension] Login required detected');
+    await dispatchRuntimeMessage({
+      type: 'TASK_ERROR',
+      payload: { message: '请先登录币安' },
+    });
+    loginErrorDispatched = true;
+    return;
+  }
+
+  loginErrorDispatched = false;
+  if (!automationEnabled) {
+    // eslint-disable-next-line no-console
+    console.log('[dddd-alpah-extension] Automation disabled, tearing down polling');
+    teardownPolling();
+    return;
+  }
+
+  await ensurePolling();
+}
+
+async function handleManualRun(): Promise<void> {
+  if (evaluationInProgress) {
+    return;
+  }
+
+  await runEvaluationCycle(false, { placeOrder: false });
+}
+
+
+async function ensurePolling(): Promise<void> {
+  if (!isExtensionContextValid()) {
+    // eslint-disable-next-line no-console
+    console.warn('[dddd-alpah-extension] Extension context invalid, skipping evaluation');
+    teardownPolling();
+    return;
+  }
+
+  if (!automationEnabled) {
+    // eslint-disable-next-line no-console
+    console.log('[dddd-alpah-extension] Automation not enabled, skipping evaluation');
+    return;
+  }
+
+  if (evaluationInProgress || nextEvaluationTimeoutId !== undefined) {
+    return;
+  }
+
+  if (!automationLoopActive) {
+    scheduleNextAutomationCycle(0);
+    return;
+  }
+
+  scheduleNextAutomationCycle();
+}
+
+interface EvaluationOptions {
+  placeOrder?: boolean;
+}
+
+async function runEvaluationCycle(
+  requireAutomationEnabled = true,
+  options: EvaluationOptions = {},
+): Promise<void> {
+  if (!isExtensionContextValid()) {
+    // eslint-disable-next-line no-console
+    console.warn('[dddd-alpah-extension] Extension context invalid in evaluation cycle');
+    teardownPolling();
+    return;
+  }
+
+  if (evaluationInProgress) {
+    // eslint-disable-next-line no-console
+    console.log('[dddd-alpah-extension] Evaluation already in progress, skipping');
+    return;
+  }
+
+  evaluationInProgress = true;
+  // eslint-disable-next-line no-console
+  console.log(
+    '[dddd-alpah-extension] Starting evaluation cycle, placeOrder:',
+    options.placeOrder !== false,
+  );
+
+  try {
+    const placeOrder = options.placeOrder !== false;
+
+    if (requireAutomationEnabled && !automationEnabled) {
+      // eslint-disable-next-line no-console
+      console.log('[dddd-alpah-extension] Automation disabled during evaluation, tearing down');
+      teardownPolling();
+      return;
+    }
+
+    if (domController.checkForLoginPrompt()) {
+      if (!loginErrorDispatched) {
+        // eslint-disable-next-line no-console
+        console.warn('[dddd-alpah-extension] Login prompt detected during evaluation');
+        await dispatchRuntimeMessage({
+          type: 'TASK_ERROR',
+          payload: { message: '请先登录币安' },
+        });
+        loginErrorDispatched = true;
+      }
+      return;
+    }
+
+    loginErrorDispatched = false;
+
+    const result = await executePrimaryTask({ placeOrder });
+    // eslint-disable-next-line no-console
+    console.log('[dddd-alpah-extension] Task completed:', result.success, result.details);
+    await dispatchRuntimeMessage({
+      type: 'TASK_COMPLETE',
+      payload: result,
+    });
+  } catch (error) {
+    const messageText = error instanceof Error ? error.message : String(error);
+    // eslint-disable-next-line no-console
+    console.error('[dddd-alpah-extension] Evaluation cycle error:', messageText);
+    await dispatchRuntimeMessage({
+      type: 'TASK_ERROR',
+      payload: { message: messageText },
+    });
+  } finally {
+    evaluationInProgress = false;
+  }
+}
+
+interface TaskExecutionOptions {
+  placeOrder?: boolean;
+}
+
+async function executePrimaryTask(
+  options: TaskExecutionOptions = {},
+): Promise<{ success: boolean; details?: string; meta?: TaskResultMeta }> {
+  // eslint-disable-next-line no-console
+  console.log('[dddd-alpah-extension] executePrimaryTask started');
+
+  const panel = domController.findTradeHistoryPanel();
+  if (!panel) {
+    // eslint-disable-next-line no-console
+    console.error('[dddd-alpah-extension] Trade history panel not found');
+    return {
+      success: false,
+      details: 'Unable to locate limit trade history panel.',
+    };
+  }
+
+  const trades = domController.extractTradeHistorySamples(panel);
+  // eslint-disable-next-line no-console
+  console.log('[dddd-alpah-extension] Extracted trades:', trades.length);
+  if (!trades.length) {
+    return { success: false, details: 'No limit trade entries detected.' };
+  }
+
+  const tokenSymbol = extractTokenSymbol();
+  // eslint-disable-next-line no-console
+  console.log('[dddd-alpah-extension] Token symbol:', tokenSymbol);
+
+  const averagePrice = vwapCalculator.calculate(trades);
+  if (averagePrice === null) {
+    // eslint-disable-next-line no-console
+    console.error('[dddd-alpah-extension] Failed to calculate VWAP');
+    return { success: false, details: 'Failed to compute average price.' };
+  }
+
+  // eslint-disable-next-line no-console
+  console.log('[dddd-alpah-extension] Calculated VWAP:', averagePrice);
+
+  const tradeCount = trades.length;
+  const precision = averagePrice < 1 ? 8 : 6;
+  const formattedAverage = averagePrice.toFixed(precision);
+  const detailParts = [`VWAP across ${tradeCount} trades: ${formattedAverage}`];
+
+  let shouldPlaceOrder = options.placeOrder !== false;
+  let orderSkipReason: 'manual' | 'points' | 'limit' | null = shouldPlaceOrder ? null : 'manual';
+  let latestOrderHistorySnapshot: OrderHistorySnapshotPayload | null = null;
+  let orderResult: OrderPlacementResult | undefined;
+  let currentBalanceSnapshot: number | undefined;
+
+  try {
+    latestOrderHistorySnapshot = await refreshOrderHistorySnapshotForAutomation();
+    if (latestOrderHistorySnapshot) {
+      // eslint-disable-next-line no-console
+      console.log('[dddd-alpah-extension] Order history snapshot', latestOrderHistorySnapshot);
+
+      if (latestOrderHistorySnapshot.buyOrderCount >= MAX_SUCCESSFUL_TRADES) {
+        detailParts.push(SUCCESSFUL_TRADES_LIMIT_MESSAGE);
+        shouldPlaceOrder = false;
+        orderSkipReason = 'limit';
+      } else if (latestOrderHistorySnapshot.alphaPoints >= pointsTarget) {
+        if (shouldPlaceOrder) {
+          detailParts.push(
+            `Points target reached (${latestOrderHistorySnapshot.alphaPoints} ≥ ${pointsTarget}). Order placement skipped.`,
+          );
+        }
+        shouldPlaceOrder = false;
+        orderSkipReason = 'points';
+      }
+    }
+  } catch (error) {
+    const messageText = error instanceof Error ? error.message : String(error);
+    // eslint-disable-next-line no-console
+    console.warn(
+      '[dddd-alpah-extension] Failed to refresh order history before placement:',
+      messageText,
+    );
+  }
+
+  if (shouldPlaceOrder) {
+    // eslint-disable-next-line no-console
+    console.log(
+      '[dddd-alpah-extension] Attempting to place order, priceOffsetPercent:',
+      priceOffsetPercent,
+    );
+    try {
+      // 使用新的 OrderPlacer 模块
+      orderPlacer.setIntervalMode(intervalMode);
+      orderPlacer.enableMonitoring();
+      orderResult = await orderPlacer.ensureLimitOrderPlaced({
+        price: averagePrice,
+        priceOffsetPercent,
+        buyPriceOffset,
+        sellPriceOffset,
+      });
+      // eslint-disable-next-line no-console
+      console.log('[dddd-alpah-extension] Order result:', orderResult.status, orderResult.reason);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      // eslint-disable-next-line no-console
+      console.error('[dddd-alpah-extension] Order placement error:', message);
+      return { success: false, details: `Order placement failed: ${message}` };
+    }
+
+    if (orderResult) {
+      if (orderResult.status === 'placed') {
+        detailParts.push('Placed limit and reverse orders.');
+      } else {
+        const reason = orderResult.reason?.trim();
+        if (reason) {
+          detailParts.push(reason);
+        }
+      }
+    }
+  } else if (orderSkipReason === 'manual') {
+    detailParts.push('Order placement skipped (manual refresh).');
+  }
+
+  if (orderResult?.status === 'placed') {
+    await delay(1_000);
+  }
+
+  const balancePanel = getTradingFormPanel();
+  if (balancePanel) {
+    const balanceValue = await extractAvailableUsdt(balancePanel);
+    if (balanceValue !== null && Number.isFinite(balanceValue)) {
+      currentBalanceSnapshot = balanceValue;
+    }
+  }
+
+  // eslint-disable-next-line no-console
+  console.log('[dddd-alpah-extension] Limit VWAP', {
+    averagePrice,
+    formattedAverage,
+    tokenSymbol: tokenSymbol ?? null,
+    orderStatus: shouldPlaceOrder ? (orderResult?.status ?? 'skipped') : 'manual-skip',
+    orderReason: shouldPlaceOrder ? (orderResult?.reason ?? null) : 'manual refresh',
+    timestamp: new Date().toISOString(),
+  });
+
+  const meta: TaskResultMeta = {
+    averagePrice,
+    tradeCount,
+  };
+
+  if (tokenSymbol) {
+    meta.tokenSymbol = tokenSymbol;
+  }
+
+  if (
+    orderResult?.availableBalanceBeforeOrder !== undefined &&
+    Number.isFinite(orderResult.availableBalanceBeforeOrder)
+  ) {
+    meta.availableBalanceBeforeOrder = orderResult.availableBalanceBeforeOrder;
+  }
+
+  if (currentBalanceSnapshot !== undefined && Number.isFinite(currentBalanceSnapshot)) {
+    meta.currentBalance = currentBalanceSnapshot;
+  }
+
+  return {
+    success: true,
+    details: detailParts.join(' '),
+    meta,
+  };
+}
+
+async function dispatchRuntimeMessage(message: RuntimeMessage): Promise<void> {
+  if (!isExtensionContextValid()) {
+    teardownPolling();
+    return;
+  }
+
+  try {
+      }
+    }
+  }
+
+  const fallbackPanel = document.querySelector('[class*="order-4"]');
+  if (fallbackPanel instanceof HTMLElement) {
+    return fallbackPanel;
+  }
+
+  const grids = Array.from(document.querySelectorAll('.ReactVirtualized__Grid'));
+  for (const grid of grids) {
+    const host = grid.closest('[class*="order-4"]');
+    if (host instanceof HTMLElement) {
+      return host;
+    }
+  }
+
+  return null;
+}
+
+function extractTradeHistorySamples(panel: HTMLElement, limit = 60): TradeHistorySample[] {
+  const grid = panel.querySelector('.ReactVirtualized__Grid');
+  if (!grid) {
+    return [];
+  }
+
+  const rowSelector = SELECTORS.tradeHistoryRow ?? '[role="gridcell"]';
+  const rowNodes = Array.from(grid.querySelectorAll(rowSelector)).slice(0, limit);
+
+  const entries: TradeHistorySample[] = [];
+  for (const node of rowNodes) {
+    if (!(node instanceof HTMLElement)) {
+      continue;
+    }
+
+    const columns = Array.from(node.querySelectorAll('div'));
+    if (columns.length < 3) {
+      continue;
+    }
+
+    const time = columns[0].textContent?.trim() ?? '';
+    const priceText = columns[1].textContent ?? '';
+    const quantityText = columns[2].textContent ?? '';
+
+    const price = parseNumericValue(priceText);
+    const quantity = parseNumericValue(quantityText);
+
+    if (price === null || quantity === null) {
+      continue;
+    }
+
+    entries.push({ time, price, quantity });
+  }
+
+  return entries;
+}
+
+function extractTokenSymbol(): string | null {
+  const selector = SELECTORS.tokenSymbol;
+  if (selector) {
+    const node = document.querySelector(selector);
+    const text = node?.textContent?.trim();
+    if (text) {
+      return text;
+    }
+  }
+
+  const orderHeader = document.querySelector('.order-1');
+  if (orderHeader instanceof HTMLElement) {
+    const primaryCandidate = orderHeader.querySelector(
+      'div.text-\\[20px\\].font-\\[600\\].leading-\\[24px\\].text-PrimaryText',
+    );
+    const text = primaryCandidate?.textContent?.trim();
+    if (text) {
+      return text;
+    }
+
+    const fallbackNodes = Array.from(orderHeader.querySelectorAll<HTMLElement>('div'));
+    for (const candidate of fallbackNodes) {
+      const className = typeof candidate.className === 'string' ? candidate.className : '';
+      if (className.includes('text-[20px]') && className.includes('font-[600]')) {
+        const candidateText = candidate.textContent?.trim();
+        if (candidateText) {
+          return candidateText;
+        }
+      }
+    }
+  }
+
+  return null;
+}
+
+// calculateVolumeWeightedAverage 函数已移至 VWAPCalculator 类
+
+// OrderPlacementResult 类型已从 './automation/orderPlacer.js' 导入
+
+function getTradingFormPanel(): HTMLElement | null {
+  const isValidTradingPanel = (candidate: Element | null): candidate is HTMLElement => {
+    if (!(candidate instanceof HTMLElement)) {
+      return false;
+    }
+
+    const hasLimitPriceInput = Boolean(candidate.querySelector('#limitPrice'));
+    const hasBuyButton = Boolean(candidate.querySelector('button.bn-button__buy'));
+
+    return hasLimitPriceInput && hasBuyButton;
+  };
+
+  const resolveFromNode = (node: Element | null): HTMLElement | null => {
+    let current: Element | null = node;
+
+    while (current && current !== document.body) {
+      if (isValidTradingPanel(current)) {
+        return current;
+      }
+
+      if (current instanceof HTMLElement) {
+        const flexAncestor = current.closest('.flexlayout__tab, .flexlayout__tab_moveable');
+        if (isValidTradingPanel(flexAncestor)) {
+          return flexAncestor;
+        }
+      }
+
+      current = current.parentElement;
+    }
+
+    return null;
+  };
+
+  if (SELECTORS.tradingFormPanel) {
+    const preferred = document.querySelector(SELECTORS.tradingFormPanel);
+    if (isValidTradingPanel(preferred)) {
+      return preferred;
+    }
+  }
+
+  const keySelectors = ['#limitPrice', '#limitSize', '#limitTotal', 'button.bn-button__buy'];
+
+  for (const keySelector of keySelectors) {
+    const node = document.querySelector(keySelector);
+    const panel = resolveFromNode(node);
+    if (panel) {
+      return panel;
+    }
+  }
+
+  const fallback = document.querySelector('.order-5');
+  if (isValidTradingPanel(fallback)) {
+    return fallback;
+  }
+
+  return fallback instanceof HTMLElement ? fallback : null;
+}
+
+function teardownPolling(): void {
+  if (nextEvaluationTimeoutId !== undefined) {
+    clearTimeout(nextEvaluationTimeoutId);
+    nextEvaluationTimeoutId = undefined;
+  }
+
+  automationLoopActive = false;
+  evaluationInProgress = false;
+}
+
+function getRandomAutomationDelay(): number {
+  let minDelay: number;
+  let maxDelay: number;
+
+  if (intervalMode === 'fast') {
+    minDelay = FAST_MODE_MIN_DELAY;
+    maxDelay = FAST_MODE_MAX_DELAY;
+  } else {
+    minDelay = MEDIUM_MODE_MIN_DELAY;
+    maxDelay = MEDIUM_MODE_MAX_DELAY;
+  }
+
+  const spread = maxDelay - minDelay;
+  const offset = Math.random() * spread;
+  return Math.floor(minDelay + offset);
+}
+
+function scheduleNextAutomationCycle(delayMs?: number): void {
+  if (!automationEnabled) {
+    return;
+  }
+
+  const delay = typeof delayMs === 'number' && delayMs >= 0 ? delayMs : getRandomAutomationDelay();
+
+  if (nextEvaluationTimeoutId !== undefined) {
+    clearTimeout(nextEvaluationTimeoutId);
+  }
+
+  automationLoopActive = true;
+  nextEvaluationTimeoutId = window.setTimeout(() => {
+    nextEvaluationTimeoutId = undefined;
+
+    if (!automationEnabled || !isExtensionContextValid()) {
+      return;
+    }
+
+    void runEvaluationCycle(true, { placeOrder: true }).finally(() => {
+      if (automationEnabled) {
+        scheduleNextAutomationCycle();
+      }
+    });
+  }, delay);
+}
+
+function isExtensionContextValid(): boolean {
+  if (runtimeUnavailable) {
+    return false;
+  }
+
+  return typeof chrome.runtime?.id === 'string' && chrome.runtime.id.length > 0;
+}
+
+function initializeAutomationStateWatcher(): void {
+  if (automationStateWatcherInitialized) {
+    return;
+  }
+
+  automationStateWatcherInitialized = true;
+  void refreshAutomationState();
+
+  chrome.storage.onChanged.addListener((changes, areaName) => {
+    if (areaName !== 'local') {
+      return;
+    }
+
+    if (STORAGE_KEY in changes) {
+      const newValue = changes[STORAGE_KEY]?.newValue;
+      applyAutomationState(newValue);
+    }
+
+    if (TOKEN_DIRECTORY_STORAGE_KEY in changes) {
+      invalidateTokenDirectoryCache();
+    }
+  });
+}
+
+function applyAutomationState(value: unknown): void {
+  let nextEnabled = false;
+  let nextPriceOffset = DEFAULT_PRICE_OFFSET_PERCENT;
+  let nextBuyPriceOffset = DEFAULT_BUY_PRICE_OFFSET_PERCENT;
+  let nextSellPriceOffset = DEFAULT_SELL_PRICE_OFFSET_PERCENT;
+  let nextPointsFactor = DEFAULT_POINTS_FACTOR;
+  let nextPointsTarget = DEFAULT_POINTS_TARGET;
+  let nextIntervalMode: IntervalMode = DEFAULT_INTERVAL_MODE;
+
+  if (value && typeof value === 'object') {
+    const record = value as { isEnabled?: unknown; settings?: unknown };
+    nextEnabled = record.isEnabled === true;
+
+    if (record.settings && typeof record.settings === 'object') {
+      const candidate = (record.settings as { priceOffsetPercent?: unknown }).priceOffsetPercent;
+      nextPriceOffset = extractPriceOffsetPercent(candidate, DEFAULT_PRICE_OFFSET_PERCENT);
+
+      const buyOffsetCandidate = (record.settings as { buyPriceOffset?: unknown }).buyPriceOffset;
+      nextBuyPriceOffset = extractPriceOffsetPercent(
+        buyOffsetCandidate,
+        DEFAULT_BUY_PRICE_OFFSET_PERCENT,
+      );
+
+      const sellOffsetCandidate = (record.settings as { sellPriceOffset?: unknown })
+        .sellPriceOffset;
+      nextSellPriceOffset = extractPriceOffsetPercent(
+        sellOffsetCandidate,
+        DEFAULT_SELL_PRICE_OFFSET_PERCENT,
+      );
+
+      const factorCandidate = (record.settings as { pointsFactor?: unknown }).pointsFactor;
+      nextPointsFactor = extractPointsFactor(factorCandidate);
+
+      const targetCandidate = (record.settings as { pointsTarget?: unknown }).pointsTarget;
+      nextPointsTarget = extractPointsTarget(targetCandidate);
+
+      const intervalCandidate = (record.settings as { intervalMode?: unknown }).intervalMode;
+      nextIntervalMode = extractIntervalMode(intervalCandidate);
+    }
+  }
+
+  const stateChanged =
+    automationEnabled !== nextEnabled ||
+    priceOffsetPercent !== nextPriceOffset ||
+    buyPriceOffset !== nextBuyPriceOffset ||
+    sellPriceOffset !== nextSellPriceOffset ||
+    pointsFactor !== nextPointsFactor ||
+    pointsTarget !== nextPointsTarget ||
+    intervalMode !== nextIntervalMode;
+
+  if (stateChanged) {
+    // eslint-disable-next-line no-console
+    console.log('[dddd-alpah-extension] Automation state updated:', {
+      enabled: nextEnabled,
+      priceOffsetPercent: nextPriceOffset,
+      buyPriceOffset: nextBuyPriceOffset,
+      sellPriceOffset: nextSellPriceOffset,
+      pointsFactor: nextPointsFactor,
+      pointsTarget: nextPointsTarget,
+      intervalMode: nextIntervalMode,
+    });
+  }
+
+  automationEnabled = nextEnabled;
+  priceOffsetPercent = nextPriceOffset;
+  buyPriceOffset = nextBuyPriceOffset;
+  sellPriceOffset = nextSellPriceOffset;
+  pointsFactor = nextPointsFactor;
+  pointsTarget = nextPointsTarget;
+  intervalMode = nextIntervalMode;
+
+  if (!automationEnabled) {
+    teardownPolling();
+  }
+}
+
+function extractPriceOffsetPercent(value: unknown, fallback: number): number {
+  if (value === undefined || value === null) {
+    return clampPriceOffsetPercent(fallback);
+  }
+
+  if (typeof value === 'number') {
+    return clampPriceOffsetPercent(value);
+  }
+
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) {
+    return clampPriceOffsetPercent(fallback);
+  }
+
+  return clampPriceOffsetPercent(parsed);
+}
+
+const MIN_POINTS_FACTOR = 1;
+const MAX_POINTS_FACTOR = 1000;
+const MIN_POINTS_TARGET = 1;
+const MAX_POINTS_TARGET = 1000;
+
+function extractPointsFactor(value: unknown): number {
+  if (value === undefined || value === null) {
+    return DEFAULT_POINTS_FACTOR;
+  }
+
+  if (typeof value === 'number') {
+    return clampPointsFactor(value);
+  }
+
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) {
+    return DEFAULT_POINTS_FACTOR;
+  }
+
+  return clampPointsFactor(parsed);
+}
+
+function clampPriceOffsetPercent(value: number): number {
+  if (!Number.isFinite(value)) {
+    return DEFAULT_PRICE_OFFSET_PERCENT;
+  }
+
+  if (value < MIN_PRICE_OFFSET_PERCENT) {
+    return MIN_PRICE_OFFSET_PERCENT;
+  }
+
+  if (value > MAX_PRICE_OFFSET_PERCENT) {
+    return MAX_PRICE_OFFSET_PERCENT;
+  }
+
+  return value;
+}
+
+function clampPointsFactor(value: number): number {
+  if (!Number.isFinite(value)) {
+    return DEFAULT_POINTS_FACTOR;
+  }
+
+  const floored = Math.floor(value);
+
+  if (floored < MIN_POINTS_FACTOR) {
+    return MIN_POINTS_FACTOR;
+  }
+
+  if (floored > MAX_POINTS_FACTOR) {
+    return MAX_POINTS_FACTOR;
+  }
+
+  return floored;
+}
+
+function extractPointsTarget(value: unknown): number {
+  if (value === undefined || value === null) {
+    return DEFAULT_POINTS_TARGET;
+  }
+
+  if (typeof value === 'number') {
+    return clampPointsTarget(value);
+  }
+
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) {
+    return DEFAULT_POINTS_TARGET;
+  }
+
+  return clampPointsTarget(parsed);
+}
+
+function clampPointsTarget(value: number): number {
+  if (!Number.isFinite(value)) {
+    return DEFAULT_POINTS_TARGET;
+  }
+
+  const floored = Math.floor(value);
+
+  if (floored < MIN_POINTS_TARGET) {
+    return MIN_POINTS_TARGET;
+  }
+
+  if (floored > MAX_POINTS_TARGET) {
+    return MAX_POINTS_TARGET;
+  }
+
+  return floored;
+}
+
+function extractIntervalMode(value: unknown): IntervalMode {
+  if (value === 'fast' || value === 'medium') {
+    return value;
+  }
+  return DEFAULT_INTERVAL_MODE;
+}
+
+async function refreshAutomationState(): Promise<void> {
+  await new Promise<void>((resolve) => {
+    chrome.storage.local.get(STORAGE_KEY, (result) => {
+      if (chrome.runtime.lastError) {
+        resolve();
+        return;
+      }
+
+      applyAutomationState(result[STORAGE_KEY]);
+      resolve();
+    });
+  });
+}

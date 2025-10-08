@@ -62,6 +62,7 @@
     "totalCost": "Total Cost",
     "totalCostTooltip": "Total cost is simply initial balance - current balance. If you find the cost is high, it may be because some tokens were not sold correctly. Please check your token balance.",
     "costRatio": "Cost Ratio",
+    "costRatioInfo": "Cost ratio = Total Cost / Buy Volume × 10000. Shows slippage and fees in basis points (‱).",
     "sessionDuration": "Current run duration",
     "updateTime": "Update Time",
     "joinTelegram": "Join our Telegram community to discuss Alpha farming:",

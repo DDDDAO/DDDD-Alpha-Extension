@@ -62,6 +62,7 @@
     "totalCost": "总损耗",
     "totalCostTooltip": "总损耗是简单的初始余额 - 当前余额获得,如果发现损耗很高,可能是因为有一些代币没有被正确卖出导致,请检查代币余额。",
     "costRatio": "损耗率",
+    "costRatioInfo": "损耗率 = 总损耗 / 买入量 × 10000。以万分之几(‱)显示每笔交易的滑点和手续费。",
     "sessionDuration": "本轮运行耗时",
     "updateTime": "更新时间",
     "joinTelegram": "加入电报社区一起讨论Alpha刷分心得:",

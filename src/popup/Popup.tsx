@@ -1211,19 +1211,19 @@ export function Popup(): React.ReactElement {
 
   function calculateCostRatio(): number | undefined {
     const totalCost = calculateTotalCost();
-    const firstBalance =
+    const buyVolume =
       state?.dailyBuyVolume?.date === todayKey
-        ? state.dailyBuyVolume.firstBalance
-        : snapshot?.firstBalanceToday;
+        ? state.dailyBuyVolume.total
+        : snapshot?.buyVolumeToday;
 
     if (
       typeof totalCost === 'number' &&
       Number.isFinite(totalCost) &&
-      typeof firstBalance === 'number' &&
-      Number.isFinite(firstBalance) &&
-      firstBalance > 0
+      typeof buyVolume === 'number' &&
+      Number.isFinite(buyVolume) &&
+      buyVolume > 0
     ) {
-      return totalCost / firstBalance;
+      return totalCost / buyVolume;
     }
 
     return undefined;
@@ -2267,7 +2267,14 @@ export function Popup(): React.ReactElement {
             </Col>
             <Col span={12}>
               <Statistic
-                title={t('stats.costRatio')}
+                title={
+                  <Space size={4}>
+                    {t('stats.costRatio')}
+                    <Tooltip title={t('stats.costRatioInfo')}>
+                      <InfoCircleOutlined style={{ fontSize: 12, color: '#888' }} />
+                    </Tooltip>
+                  </Space>
+                }
                 value={formatCostRatio(calculateCostRatio())}
                 valueStyle={{ fontSize: 14 }}
               />
@@ -2707,7 +2714,7 @@ function formatNumber(
 
 function formatCostRatio(ratio: number | undefined): string {
   if (typeof ratio === 'number' && Number.isFinite(ratio)) {
-    return `${(ratio * 100).toFixed(2)}%`;
+    return `${(ratio * 10000).toFixed(2)}‱`;
   }
   return '—';
 }

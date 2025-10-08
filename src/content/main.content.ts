@@ -1474,7 +1474,10 @@ function detectLimitOrderSide(normalizedText: string): 'buy' | 'sell' | null {
  */
 function playNormalWarningSound(): void {
   try {
-    const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+    const AudioContextClass =
+      window.AudioContext ||
+      (window as typeof window & { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+    const audioContext = new AudioContextClass();
 
     const playBeep = (frequency: number, when: number, duration: number, volume: number) => {
       const oscillator = audioContext.createOscillator();
@@ -1611,7 +1614,10 @@ function showPendingOrderWarning(side: 'buy' | 'sell'): void {
  */
 function playUrgentAlertSound(): void {
   try {
-    const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+    const AudioContextClass =
+      window.AudioContext ||
+      (window as typeof window & { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+    const audioContext = new AudioContextClass();
 
     const playAlarmBeep = (frequency: number, when: number, duration: number, volume: number) => {
       const oscillator = audioContext.createOscillator();

@@ -3,6 +3,7 @@ export interface TargetSelectors {
   tradeHistoryPanel?: string;
   tradeHistoryRow?: string;
   tokenSymbol?: string;
+  tradingFormPanel?: string;
 }
 
 export const SELECTORS: TargetSelectors = {

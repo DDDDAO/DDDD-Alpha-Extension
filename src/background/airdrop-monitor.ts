@@ -17,6 +17,15 @@ const ALPHA123_PRICES_URL = `${ALPHA123_ORIGIN}/api/price/`;
 const UPDATE_ALARM_NAME = 'airdrop-update';
 const UPDATE_INTERVAL_MINUTES = 30; // 30分钟更新一次
 
+let monitorInitialized = false;
+
+const handleAirdropAlarm = (alarm: chrome.alarms.Alarm): void => {
+  if (alarm.name === UPDATE_ALARM_NAME) {
+    console.log('[AirdropMonitor] ⏰ 定时更新触发');
+    void fetchAndSaveAirdropData();
+  }
+};
+
 /**
  * 获取10秒对齐的时间戳
  * 与 binance helper 保持一致的时间戳处理方式
@@ -29,6 +38,12 @@ function getAlignedTimestamp(): number {
  * 初始化空投监控服务
  */
 export function initAirdropMonitor(): void {
+  if (monitorInitialized) {
+    console.log('[AirdropMonitor] ⚙️ 已初始化，跳过重复注册');
+    return;
+  }
+
+  monitorInitialized = true;
   console.log('[AirdropMonitor] 🚀 初始化空投监控服务');
 
   // 创建定时更新任务
@@ -40,12 +55,9 @@ export function initAirdropMonitor(): void {
   console.log(`[AirdropMonitor] ⏰ 定时任务已创建: 每${UPDATE_INTERVAL_MINUTES}分钟更新一次`);
 
   // 监听定时任务
-  chrome.alarms.onAlarm.addListener((alarm) => {
-    if (alarm.name === UPDATE_ALARM_NAME) {
-      console.log('[AirdropMonitor] ⏰ 定时更新触发');
-      void fetchAndSaveAirdropData();
-    }
-  });
+  if (!chrome.alarms.onAlarm.hasListener(handleAirdropAlarm)) {
+    chrome.alarms.onAlarm.addListener(handleAirdropAlarm);
+  }
 
   // 初始化时立即获取一次数据
   console.log('[AirdropMonitor] 🔄 立即执行首次数据获取...');
@@ -69,6 +81,13 @@ async function saveAirdropData(data: AirdropData): Promise<void> {
 async function fetchJson<T>(url: string): Promise<T> {
   const response = await fetch(url, {
     cache: 'no-store',
+    mode: 'cors',
+    credentials: 'omit',
+    referrer: `${ALPHA123_ORIGIN}/`,
+    referrerPolicy: 'strict-origin-when-cross-origin',
+    headers: {
+      Accept: 'application/json, text/plain, */*',
+    },
   });
 
   const contentType = response.headers.get('content-type');
@@ -177,9 +196,14 @@ async function fetchAndSaveAirdropData(): Promise<void> {
       `[AirdropMonitor] ✓ 数据更新成功: 今日 ${finalData.today.length} 个，预告 ${finalData.forecast.length} 个`,
     );
   } catch (error) {
-    console.error('[AirdropMonitor] ❌ 更新失败:', error);
-    if (error instanceof Error) {
-      console.error('[AirdropMonitor] 错误详情:', error.message);
+    const message = error instanceof Error ? error.message : String(error ?? 'Unknown error');
+    if (message.includes('403')) {
+      console.warn('[AirdropMonitor] ⚠️ 请求被拒绝 (403)，将稍后重试');
+    } else {
+      console.error('[AirdropMonitor] ❌ 更新失败:', error);
+      if (error instanceof Error) {
+        console.error('[AirdropMonitor] 错误详情:', message);
+      }
     }
     // 保存空数据避免前端错误
     await saveAirdropData({

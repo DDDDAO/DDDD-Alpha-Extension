@@ -43,6 +43,14 @@ const URGENT_SELL_ALERT_ELEMENT_ID = 'dddd-alpha-urgent-sell-alert';
 const MIN_PRICE_OFFSET_PERCENT = -5;
 const MAX_PRICE_OFFSET_PERCENT = 5;
 
+const ORDER_HISTORY_CACHE_TTL_MS = 10_000;
+
+let orderHistoryCache: {
+  csrfToken: string;
+  expiresAt: number;
+  responses: unknown[];
+} | null = null;
+
 function getCookieValue(name: string): string | null {
   const pattern = new RegExp(`(?:^|;\\s*)${name}=([^;]*)`);
   const match = document.cookie.match(pattern);
@@ -76,6 +84,27 @@ function getPageLocale(): 'en' | 'zh-CN' {
   // eslint-disable-next-line no-console
   console.log('[dddd-alpah-extension] Detected locale: en (default)');
   return 'en';
+}
+
+function getCachedOrderHistory(csrfToken: string): unknown[] | null {
+  if (!orderHistoryCache || orderHistoryCache.csrfToken !== csrfToken) {
+    return null;
+  }
+
+  if (orderHistoryCache.expiresAt < Date.now()) {
+    orderHistoryCache = null;
+    return null;
+  }
+
+  return orderHistoryCache.responses.slice();
+}
+
+function setCachedOrderHistory(csrfToken: string, responses: unknown[]): void {
+  orderHistoryCache = {
+    csrfToken,
+    expiresAt: Date.now() + ORDER_HISTORY_CACHE_TTL_MS,
+    responses: responses.slice(),
+  };
 }
 
 function invalidateTokenDirectoryCache(): void {
@@ -232,6 +261,13 @@ async function fetchAllOrderHistoryPages(
   csrfToken: string,
   now = new Date(),
 ): Promise<unknown[] | null> {
+  const cached = getCachedOrderHistory(csrfToken);
+  if (cached) {
+    // eslint-disable-next-line no-console
+    console.log('[dddd-alpha-extension] Reusing cached order history pages');
+    return cached;
+  }
+
   const allResponses: unknown[] = [];
   let currentPage = 1;
   const maxPages = 10; // 最多查询10页，防止无限循环
@@ -246,6 +282,7 @@ async function fetchAllOrderHistoryPages(
     if (!response.success || !response.data) {
       if (currentPage === 1) {
         // 第一页就失败了，返回null
+        orderHistoryCache = null;
         return null;
       }
       // 后续页面失败，返回已获取的数据
@@ -275,6 +312,7 @@ async function fetchAllOrderHistoryPages(
 
   // eslint-disable-next-line no-console
   console.log(`[dddd-alpha-extension] Fetched ${allResponses.length} pages of order history`);
+  setCachedOrderHistory(csrfToken, allResponses);
   return allResponses;
 }
 
@@ -1469,9 +1507,34 @@ function detectLimitOrderSide(normalizedText: string): 'buy' | 'sell' | null {
   return null;
 }
 
+type WindowWithWebkitAudioContext = Window &
+  typeof globalThis & {
+    webkitAudioContext?: typeof AudioContext;
+  };
+
+function resolveAudioContext(): AudioContext | null {
+  if (typeof window === 'undefined') {
+    return null;
+  }
+
+  const extendedWindow = window as WindowWithWebkitAudioContext;
+  const audioCtor = extendedWindow.AudioContext ?? extendedWindow.webkitAudioContext;
+  if (!audioCtor) {
+    return null;
+  }
+
+  try {
+    return new audioCtor();
+  } catch (error) {
+    console.error('[dddd-alpha-extension] Failed to create AudioContext:', error);
+    return null;
+  }
+}
+
 /**
  * 播放普通提示音 - 柔和的铃声
  */
+
 function playNormalWarningSound(): void {
   try {
     const AudioContextClass =
@@ -1479,34 +1542,49 @@ function playNormalWarningSound(): void {
       (window as typeof window & { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
     const audioContext = new AudioContextClass();
 
-    const playBeep = (frequency: number, when: number, duration: number, volume: number) => {
-      const oscillator = audioContext.createOscillator();
-      const gainNode = audioContext.createGain();
+  const startPlayback = () => {
+    try {
+      const playBeep = (frequency: number, when: number, duration: number, volume: number) => {
+        const oscillator = audioContext.createOscillator();
+        const gainNode = audioContext.createGain();
 
-      oscillator.connect(gainNode);
-      gainNode.connect(audioContext.destination);
+        oscillator.connect(gainNode);
+        gainNode.connect(audioContext.destination);
 
-      // 使用正弦波产生柔和的提示音
-      oscillator.type = 'sine';
-      oscillator.frequency.value = frequency;
+        // 使用正弦波产生柔和的提示音
+        oscillator.type = 'sine';
+        oscillator.frequency.value = frequency;
 
-      const now = when;
-      gainNode.gain.setValueAtTime(0, now);
-      gainNode.gain.linearRampToValueAtTime(volume, now + 0.01);
-      gainNode.gain.linearRampToValueAtTime(volume, now + duration - 0.01);
-      gainNode.gain.linearRampToValueAtTime(0, now + duration);
+        const now = when;
+        gainNode.gain.setValueAtTime(0, now);
+        gainNode.gain.linearRampToValueAtTime(volume, now + 0.01);
+        gainNode.gain.linearRampToValueAtTime(volume, now + duration - 0.01);
+        gainNode.gain.linearRampToValueAtTime(0, now + duration);
 
-      oscillator.start(now);
-      oscillator.stop(now + duration);
-    };
+        oscillator.start(now);
+        oscillator.stop(now + duration);
+      };
 
-    const currentTime = audioContext.currentTime;
-    // 两次柔和的提示音（800Hz 和 1000Hz）
-    playBeep(800, currentTime + 0.05, 0.15, 0.3); // 第一声
-    playBeep(1000, currentTime + 0.25, 0.2, 0.35); // 第二声（稍高音）
-  } catch (error) {
-    console.error('[dddd-alpha-extension] Failed to play normal warning sound:', error);
+      const currentTime = audioContext.currentTime;
+      // 两次柔和的提示音（800Hz 和 1000Hz）
+      playBeep(800, currentTime + 0.05, 0.15, 0.3); // 第一声
+      playBeep(1000, currentTime + 0.25, 0.2, 0.35); // 第二声（稍高音）
+    } catch (error) {
+      console.error('[dddd-alpha-extension] Failed to play normal warning sound:', error);
+    }
+  };
+
+  if (audioContext.state === 'suspended') {
+    void audioContext
+      .resume()
+      .then(startPlayback)
+      .catch((resumeError: unknown) => {
+        console.warn('[dddd-alpha-extension] Unable to resume audio context:', resumeError);
+      });
+    return;
   }
+
+  startPlayback();
 }
 
 /**
@@ -1619,40 +1697,55 @@ function playUrgentAlertSound(): void {
       (window as typeof window & { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
     const audioContext = new AudioContextClass();
 
-    const playAlarmBeep = (frequency: number, when: number, duration: number, volume: number) => {
-      const oscillator = audioContext.createOscillator();
-      const gainNode = audioContext.createGain();
+  const startPlayback = () => {
+    try {
+      const playAlarmBeep = (frequency: number, when: number, duration: number, volume: number) => {
+        const oscillator = audioContext.createOscillator();
+        const gainNode = audioContext.createGain();
 
-      oscillator.connect(gainNode);
-      gainNode.connect(audioContext.destination);
+        oscillator.connect(gainNode);
+        gainNode.connect(audioContext.destination);
 
-      // 使用方波产生刺耳的警报声
-      oscillator.type = 'square';
-      oscillator.frequency.value = frequency;
+        // 使用方波产生刺耳的警报声
+        oscillator.type = 'square';
+        oscillator.frequency.value = frequency;
 
-      const now = when;
-      gainNode.gain.setValueAtTime(0, now);
-      gainNode.gain.linearRampToValueAtTime(volume, now + 0.01);
-      gainNode.gain.linearRampToValueAtTime(volume, now + duration - 0.01);
-      gainNode.gain.linearRampToValueAtTime(0, now + duration);
+        const now = when;
+        gainNode.gain.setValueAtTime(0, now);
+        gainNode.gain.linearRampToValueAtTime(volume, now + 0.01);
+        gainNode.gain.linearRampToValueAtTime(volume, now + duration - 0.01);
+        gainNode.gain.linearRampToValueAtTime(0, now + duration);
 
-      oscillator.start(now);
-      oscillator.stop(now + duration);
-    };
+        oscillator.start(now);
+        oscillator.stop(now + duration);
+      };
 
-    const currentTime = audioContext.currentTime;
-    // 三次刺耳的高频警报声
-    playAlarmBeep(1200, currentTime + 0.05, 0.2, 0.6); // 第一声
-    playAlarmBeep(1400, currentTime + 0.3, 0.2, 0.6); // 第二声
-    playAlarmBeep(1600, currentTime + 0.55, 0.3, 0.7); // 第三声（更长更响）
+      const currentTime = audioContext.currentTime;
+      // 三次刺耳的高频警报声
+      playAlarmBeep(1200, currentTime + 0.05, 0.2, 0.6); // 第一声
+      playAlarmBeep(1400, currentTime + 0.3, 0.2, 0.6); // 第二声
+      playAlarmBeep(1600, currentTime + 0.55, 0.3, 0.7); // 第三声（更长更响）
 
-    // 再重复一次确保引起注意
-    playAlarmBeep(1200, currentTime + 1.0, 0.2, 0.6);
-    playAlarmBeep(1400, currentTime + 1.25, 0.2, 0.6);
-    playAlarmBeep(1600, currentTime + 1.5, 0.3, 0.7);
-  } catch (error) {
-    console.error('[dddd-alpha-extension] Failed to play urgent alert sound:', error);
+      // 再重复一次确保引起注意
+      playAlarmBeep(1200, currentTime + 1.0, 0.2, 0.6);
+      playAlarmBeep(1400, currentTime + 1.25, 0.2, 0.6);
+      playAlarmBeep(1600, currentTime + 1.5, 0.3, 0.7);
+    } catch (error) {
+      console.error('[dddd-alpha-extension] Failed to play urgent alert sound:', error);
+    }
+  };
+
+  if (audioContext.state === 'suspended') {
+    void audioContext
+      .resume()
+      .then(startPlayback)
+      .catch((resumeError: unknown) => {
+        console.warn('[dddd-alpha-extension] Unable to resume audio context:', resumeError);
+      });
+    return;
   }
+
+  startPlayback();
 }
 
 /**

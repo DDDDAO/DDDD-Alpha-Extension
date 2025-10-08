@@ -196,6 +196,30 @@ interface ActiveTabContext {
   isSupported: boolean;
 }
 
+const createInitialActiveTab = (): ActiveTabContext => ({
+  url: null,
+  tokenAddress: null,
+  tokenSymbol: null,
+  currentBalance: null,
+  tabId: null,
+  isSupported: false,
+});
+
+const isSameActiveTab = (left: ActiveTabContext, right: ActiveTabContext): boolean => {
+  return (
+    left.url === right.url &&
+    left.tokenAddress === right.tokenAddress &&
+    left.tokenSymbol === right.tokenSymbol &&
+    left.currentBalance === right.currentBalance &&
+    left.tabId === right.tabId &&
+    left.isSupported === right.isSupported
+  );
+};
+
+interface RefreshActiveTabOptions {
+  force?: boolean;
+}
+
 function formatSessionDuration(durationMs: number | null, locale: string): string {
   if (durationMs === null || !Number.isFinite(durationMs) || durationMs <= 0) {
     return '—';
@@ -240,14 +264,8 @@ export function Popup(): React.ReactElement {
   const [tokenDirectory, setTokenDirectory] = useState<Record<string, TokenDirectoryEntry>>({
     ...FALLBACK_TOKEN_DIRECTORY,
   });
-  const [activeTab, setActiveTab] = useState<ActiveTabContext>({
-    url: null,
-    tokenAddress: null,
-    tokenSymbol: null,
-    currentBalance: null,
-    tabId: null,
-    isSupported: false,
-  });
+  const [activeTab, setActiveTab] = useState<ActiveTabContext>(() => createInitialActiveTab());
+  const activeTabRef = useRef<ActiveTabContext>(createInitialActiveTab());
   const [controlsBusy, setControlsBusy] = useState(false);
   const [resettingInitialBalance, setResettingInitialBalance] = useState(false);
   const [priceOffsetMode, setPriceOffsetMode] = useState<PriceOffsetMode>('sideways');
@@ -521,43 +539,65 @@ export function Popup(): React.ReactElement {
     setState(loadedState);
   }, []);
 
-  const refreshActiveTab = useCallback(async (): Promise<void> => {
-    try {
-      const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
-      const [currentTab] = tabs;
-      const url = currentTab?.url ?? null;
-      const tokenAddress = url ? extractTokenFromUrl(url) : null;
-      const tabId = typeof currentTab?.id === 'number' ? currentTab.id : null;
+  const refreshActiveTab = useCallback(
+    async (options: RefreshActiveTabOptions = {}): Promise<void> => {
+      const force = options.force === true;
 
-      let tokenSymbol: string | null = null;
-      let currentBalance: number | null = null;
+      try {
+        const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+        const [currentTab] = tabs;
+        const url = currentTab?.url ?? null;
+        const tokenAddress = url ? extractTokenFromUrl(url) : null;
+        const tabId = typeof currentTab?.id === 'number' ? currentTab.id : null;
 
-      if (tabId !== null && tokenAddress) {
-        [tokenSymbol, currentBalance] = await Promise.all([
-          requestTokenSymbolFromTab(tabId),
-          requestCurrentBalanceFromTab(tabId),
-        ]);
+        const previous = activeTabRef.current;
+        const tabChanged = previous.tabId !== tabId;
+        const tokenChanged = previous.tokenAddress !== tokenAddress;
+
+        let tokenSymbol: string | null = previous.tokenSymbol;
+        let currentBalance: number | null = previous.currentBalance;
+
+        const shouldResolveToken =
+          tabId !== null &&
+          tokenAddress !== null &&
+          (force || tabChanged || tokenChanged || tokenSymbol === null);
+
+        if (shouldResolveToken && tabId !== null) {
+          tokenSymbol = await requestTokenSymbolFromTab(tabId);
+        }
+
+        const shouldResolveBalance =
+          tabId !== null &&
+          tokenAddress !== null &&
+          (force || tabChanged || tokenChanged || currentBalance === null);
+
+        if (shouldResolveBalance && tabId !== null) {
+          currentBalance = await requestCurrentBalanceFromTab(tabId);
+        }
+
+        const nextContext: ActiveTabContext = {
+          url,
+          tokenAddress,
+          tokenSymbol: tokenSymbol ?? null,
+          currentBalance: currentBalance ?? null,
+          tabId,
+          isSupported: Boolean(tokenAddress),
+        };
+
+        if (!isSameActiveTab(previous, nextContext)) {
+          activeTabRef.current = nextContext;
+          setActiveTab(nextContext);
+        }
+      } catch {
+        const fallback = createInitialActiveTab();
+        if (!isSameActiveTab(activeTabRef.current, fallback)) {
+          activeTabRef.current = fallback;
+          setActiveTab(fallback);
+        }
       }
-
-      setActiveTab({
-        url,
-        tokenAddress,
-        tokenSymbol,
-        currentBalance,
-        tabId,
-        isSupported: Boolean(tokenAddress),
-      });
-    } catch {
-      setActiveTab({
-        url: null,
-        tokenAddress: null,
-        tokenSymbol: null,
-        currentBalance: null,
-        tabId: null,
-        isSupported: false,
-      });
-    }
-  }, [requestCurrentBalanceFromTab, requestTokenSymbolFromTab]);
+    },
+    [requestCurrentBalanceFromTab, requestTokenSymbolFromTab],
+  );
 
   // Load plugin description closed status
   useEffect(() => {
@@ -608,7 +648,7 @@ export function Popup(): React.ReactElement {
 
   useEffect(() => {
     void loadState();
-    void refreshActiveTab();
+    void refreshActiveTab({ force: true });
     void fetchStableCoins(); // 初始加载稳定币种
     void fetchAirdrops(); // 初始加载空投数据
     void fetchTokenDirectory();
@@ -651,12 +691,6 @@ export function Popup(): React.ReactElement {
 
     chrome.storage.onChanged.addListener(handleStorageChange);
 
-    // Poll for updates every second
-    const interval = setInterval(() => {
-      void loadState();
-      void refreshActiveTab();
-    }, 1000);
-
     // 定时更新稳定币种数据（30秒）
     const stabilityInterval = setInterval(() => {
       void fetchStableCoins();
@@ -673,12 +707,45 @@ export function Popup(): React.ReactElement {
 
     return () => {
       chrome.storage.onChanged.removeListener(handleStorageChange);
-      clearInterval(interval);
       clearInterval(stabilityInterval);
       clearInterval(airdropInterval);
       clearInterval(tokenDirectoryInterval);
     };
   }, [loadState, refreshActiveTab, fetchStableCoins, fetchAirdrops, fetchTokenDirectory]);
+
+  useEffect(() => {
+    const tabsApi = chrome.tabs;
+    if (!tabsApi?.onActivated || !tabsApi?.onUpdated) {
+      return undefined;
+    }
+
+    const handleActivated = (): void => {
+      void refreshActiveTab({ force: true });
+    };
+
+    const handleUpdated = (
+      _tabId: number,
+      changeInfo: chrome.tabs.TabChangeInfo,
+      _tab: chrome.tabs.Tab,
+    ): void => {
+      if (changeInfo.status === 'complete' || typeof changeInfo.url === 'string') {
+        void refreshActiveTab({ force: true });
+      }
+    };
+
+    tabsApi.onActivated.addListener(handleActivated);
+    tabsApi.onUpdated.addListener(handleUpdated);
+
+    const fallbackInterval = window.setInterval(() => {
+      void refreshActiveTab();
+    }, 15000);
+
+    return () => {
+      tabsApi.onActivated.removeListener(handleActivated);
+      tabsApi.onUpdated.removeListener(handleUpdated);
+      window.clearInterval(fallbackInterval);
+    };
+  }, [refreshActiveTab]);
 
   useEffect(() => {
     if (!activeTab.isSupported || typeof activeTab.tabId !== 'number') {

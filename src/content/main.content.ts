@@ -869,10 +869,60 @@ interface TradeHistorySample {
 }
 
 function findTradeHistoryPanel(): HTMLElement | null {
+  const isTradeHistoryContainer = (candidate: Element | null): candidate is HTMLElement => {
+    if (!(candidate instanceof HTMLElement)) {
+      return false;
+    }
+
+    const divNodes = candidate.querySelectorAll('div');
+    for (const node of Array.from(divNodes)) {
+      const content = node.textContent?.trim();
+      if (!content) {
+        continue;
+      }
+
+      const normalized = content.replace(/\s+/g, ' ').toLowerCase();
+      const matchesChinese = normalized.includes('成交记录') && normalized.includes('限价');
+      const matchesEnglish = normalized.includes('trade history') && normalized.includes('limit');
+      if (matchesChinese || matchesEnglish) {
+        return true;
+      }
+    }
+
+    return false;
+  };
+
   if (SELECTORS.tradeHistoryPanel) {
     const node = document.querySelector(SELECTORS.tradeHistoryPanel);
     if (node instanceof HTMLElement) {
       return node;
+    }
+  }
+
+  const modernGridSelectors = [
+    '.ReactVirtualized__Grid.ReactVirtualized__List',
+    '.ReactVirtualized__Grid',
+  ];
+
+  for (const selector of modernGridSelectors) {
+    const grids = Array.from(document.querySelectorAll(selector));
+    for (const grid of grids) {
+      if (!(grid instanceof HTMLElement)) {
+        continue;
+      }
+
+      const containerCandidates: Array<Element | null> = [
+        grid.closest('.flexlayout__tab'),
+        grid.closest('.flexlayout__tab_moveable'),
+        grid.parentElement?.parentElement ?? null,
+        grid.parentElement,
+      ];
+
+      for (const candidate of containerCandidates) {
+        if (isTradeHistoryContainer(candidate)) {
+          return candidate;
+        }
+      }
     }
   }
 

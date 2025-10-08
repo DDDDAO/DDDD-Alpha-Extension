@@ -74,6 +74,9 @@ export type RuntimeMessage =
     }
   | {
       type: 'CONTROL_STOP';
+    }
+  | {
+      type: 'FOCUS_WINDOW';
     };
 
 export function postRuntimeMessage(message: RuntimeMessage): Promise<void> {

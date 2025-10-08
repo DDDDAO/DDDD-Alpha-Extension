@@ -43,6 +43,14 @@ const URGENT_SELL_ALERT_ELEMENT_ID = 'dddd-alpha-urgent-sell-alert';
 const MIN_PRICE_OFFSET_PERCENT = -5;
 const MAX_PRICE_OFFSET_PERCENT = 5;
 
+const ORDER_HISTORY_CACHE_TTL_MS = 10_000;
+
+let orderHistoryCache: {
+  csrfToken: string;
+  expiresAt: number;
+  responses: unknown[];
+} | null = null;
+
 function getCookieValue(name: string): string | null {
   const pattern = new RegExp(`(?:^|;\\s*)${name}=([^;]*)`);
   const match = document.cookie.match(pattern);
@@ -76,6 +84,27 @@ function getPageLocale(): 'en' | 'zh-CN' {
   // eslint-disable-next-line no-console
   console.log('[dddd-alpah-extension] Detected locale: en (default)');
   return 'en';
+}
+
+function getCachedOrderHistory(csrfToken: string): unknown[] | null {
+  if (!orderHistoryCache || orderHistoryCache.csrfToken !== csrfToken) {
+    return null;
+  }
+
+  if (orderHistoryCache.expiresAt < Date.now()) {
+    orderHistoryCache = null;
+    return null;
+  }
+
+  return orderHistoryCache.responses.slice();
+}
+
+function setCachedOrderHistory(csrfToken: string, responses: unknown[]): void {
+  orderHistoryCache = {
+    csrfToken,
+    expiresAt: Date.now() + ORDER_HISTORY_CACHE_TTL_MS,
+    responses: responses.slice(),
+  };
 }
 
 function invalidateTokenDirectoryCache(): void {
@@ -232,6 +261,13 @@ async function fetchAllOrderHistoryPages(
   csrfToken: string,
   now = new Date(),
 ): Promise<unknown[] | null> {
+  const cached = getCachedOrderHistory(csrfToken);
+  if (cached) {
+    // eslint-disable-next-line no-console
+    console.log('[dddd-alpha-extension] Reusing cached order history pages');
+    return cached;
+  }
+
   const allResponses: unknown[] = [];
   let currentPage = 1;
   const maxPages = 10; // 最多查询10页，防止无限循环
@@ -246,6 +282,7 @@ async function fetchAllOrderHistoryPages(
     if (!response.success || !response.data) {
       if (currentPage === 1) {
         // 第一页就失败了，返回null
+        orderHistoryCache = null;
         return null;
       }
       // 后续页面失败，返回已获取的数据
@@ -275,6 +312,7 @@ async function fetchAllOrderHistoryPages(
 
   // eslint-disable-next-line no-console
   console.log(`[dddd-alpha-extension] Fetched ${allResponses.length} pages of order history`);
+  setCachedOrderHistory(csrfToken, allResponses);
   return allResponses;
 }
 
@@ -1469,13 +1507,41 @@ function detectLimitOrderSide(normalizedText: string): 'buy' | 'sell' | null {
   return null;
 }
 
+type WindowWithWebkitAudioContext = Window &
+  typeof globalThis & {
+    webkitAudioContext?: typeof AudioContext;
+  };
+
+function resolveAudioContext(): AudioContext | null {
+  if (typeof window === 'undefined') {
+    return null;
+  }
+
+  const extendedWindow = window as WindowWithWebkitAudioContext;
+  const audioCtor = extendedWindow.AudioContext ?? extendedWindow.webkitAudioContext;
+  if (!audioCtor) {
+    return null;
+  }
+
+  try {
+    return new audioCtor();
+  } catch (error) {
+    console.error('[dddd-alpha-extension] Failed to create AudioContext:', error);
+    return null;
+  }
+}
+
 /**
  * 播放普通提示音 - 柔和的铃声
  */
-function playNormalWarningSound(): void {
-  try {
-    const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
 
+function playNormalWarningSound(): void {
+  const audioContext = resolveAudioContext();
+  if (!audioContext) {
+    return;
+  }
+
+  try {
     const playBeep = (frequency: number, when: number, duration: number, volume: number) => {
       const oscillator = audioContext.createOscillator();
       const gainNode = audioContext.createGain();
@@ -1610,9 +1676,12 @@ function showPendingOrderWarning(side: 'buy' | 'sell'): void {
  * 播放紧急警报声 - 刺耳的警报音
  */
 function playUrgentAlertSound(): void {
-  try {
-    const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+  const audioContext = resolveAudioContext();
+  if (!audioContext) {
+    return;
+  }
 
+  try {
     const playAlarmBeep = (frequency: number, when: number, duration: number, volume: number) => {
       const oscillator = audioContext.createOscillator();
       const gainNode = audioContext.createGain();

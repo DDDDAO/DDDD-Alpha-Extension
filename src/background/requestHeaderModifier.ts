@@ -5,6 +5,7 @@
 
 const ALPHA123_DOMAIN = 'alpha123.uk';
 const RULE_ID_BASE = 10000;
+const API_URL_FILTER = `https://${ALPHA123_DOMAIN}/api/`;
 
 /**
  * 注册动态规则以修改 alpha123.uk 请求头
@@ -50,7 +51,7 @@ export async function registerHeaderModificationRules(): Promise<void> {
         ],
       },
       condition: {
-        urlFilter: `||${ALPHA123_DOMAIN}/api/*`,
+        urlFilter: API_URL_FILTER,
         resourceTypes: [
           chrome.declarativeNetRequest.ResourceType.XMLHTTPREQUEST,
           chrome.declarativeNetRequest.ResourceType.OTHER,
@@ -64,11 +65,15 @@ export async function registerHeaderModificationRules(): Promise<void> {
   });
 
   console.log('[HeaderModifier] ✅ 请求头修改规则已注册:', rules.length, '条');
-  console.log('[HeaderModifier] 📋 规则详情:', {
-    domain: ALPHA123_DOMAIN,
-    referer: `https://${ALPHA123_DOMAIN}/`,
-    origin: `https://${ALPHA123_DOMAIN}`,
-  });
+  console.log(
+    '[HeaderModifier] 📋 规则详情:',
+    JSON.stringify({
+      domain: ALPHA123_DOMAIN,
+      urlFilter: API_URL_FILTER,
+      referer: `https://${ALPHA123_DOMAIN}/`,
+      origin: `https://${ALPHA123_DOMAIN}`,
+    }),
+  );
 }
 
 /**

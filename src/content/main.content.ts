@@ -1787,8 +1787,61 @@ function showUrgentSellAlert(): void {
 }
 
 function getTradingFormPanel(): HTMLElement | null {
-  const node = document.querySelector('.order-5');
-  return node instanceof HTMLElement ? node : null;
+  const isValidTradingPanel = (candidate: Element | null): candidate is HTMLElement => {
+    if (!(candidate instanceof HTMLElement)) {
+      return false;
+    }
+
+    const hasLimitPriceInput = Boolean(candidate.querySelector('#limitPrice'));
+    const hasBuyButton = Boolean(candidate.querySelector('button.bn-button__buy'));
+
+    return hasLimitPriceInput && hasBuyButton;
+  };
+
+  const resolveFromNode = (node: Element | null): HTMLElement | null => {
+    let current: Element | null = node;
+
+    while (current && current !== document.body) {
+      if (isValidTradingPanel(current)) {
+        return current;
+      }
+
+      if (current instanceof HTMLElement) {
+        const flexAncestor = current.closest('.flexlayout__tab, .flexlayout__tab_moveable');
+        if (isValidTradingPanel(flexAncestor)) {
+          return flexAncestor;
+        }
+      }
+
+      current = current.parentElement;
+    }
+
+    return null;
+  };
+
+  if (SELECTORS.tradingFormPanel) {
+    const preferred = document.querySelector(SELECTORS.tradingFormPanel);
+    if (isValidTradingPanel(preferred)) {
+      return preferred;
+    }
+  }
+
+  const keySelectors = ['#limitPrice', '#limitSize', '#limitTotal', 'button.bn-button__buy'];
+
+  for (const keySelector of keySelectors) {
+    const node = document.querySelector(keySelector);
+    const panel = resolveFromNode(node);
+    if (panel) {
+      return panel;
+    }
+  }
+
+  const fallback = document.querySelector('.order-5');
+  if (isValidTradingPanel(fallback)) {
+    return fallback;
+  }
+
+  return fallback instanceof HTMLElement ? fallback : null;
 }
 
 function teardownPolling(): void {

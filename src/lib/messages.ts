@@ -77,6 +77,12 @@ export type RuntimeMessage =
     }
   | {
       type: 'FOCUS_WINDOW';
+    }
+  | {
+      type: 'UPDATE_AIRDROP_NOW';
+    }
+  | {
+      type: 'GET_AIRDROP_DATA';
     };
 
 export function postRuntimeMessage(message: RuntimeMessage): Promise<void> {

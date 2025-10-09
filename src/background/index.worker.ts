@@ -1,863 +1,158 @@
-import {
-  DEFAULT_AUTOMATION,
-  DEFAULT_POINTS_TARGET,
-  MAX_SUCCESSFUL_TRADES,
-  SUCCESSFUL_TRADES_LIMIT_MESSAGE,
-} from '../config/defaults.js';
-import { calculateAlphaPointStats } from '../lib/alphaPoints.js';
+/**
+ * Background Worker 入口
+ * 负责初始化服务并路由消息
+ *
+ * 重构目标：
+ * - 清晰的服务初始化
+ * - 简洁的消息路由
+ * - 符合单一职责原则
+ */
+
 import type { RuntimeMessage } from '../lib/messages.js';
-import { getSchedulerState, updateSchedulerState } from '../lib/storage.js';
-import { getTab } from '../lib/tabs.js';
-import { initAirdropMonitor } from './airdrop-monitor.js';
-import { registerHeaderModificationRules } from './requestHeaderModifier.js';
+import { AlarmHandler } from './handlers/alarm.handler.js';
+import { MessageHandler } from './handlers/message.handler.js';
+import { AirdropMonitorService } from './services/airdrop-monitor.service.js';
+import { HeaderModifierService } from './services/header-modifier.service.js';
+import { SchedulerService } from './services/scheduler.service.js';
 
-const BINANCE_ALPHA_PATTERN =
-  /^https:\/\/www\.binance\.com\/(?:[a-z]{2}(?:-[A-Z]{2})?\/)alpha\/bsc\/(0x[a-fA-F0-9]{40})(?:[/?#]|$)/u;
+// ============================================================
+// 服务初始化
+// ============================================================
 
-const { alarmName, intervalMinutes } = DEFAULT_AUTOMATION;
-const MIN_ALARM_INTERVAL_MINUTES = 0.5;
-const INITIAL_DELAY_MINUTES = 0.01;
+const schedulerService = new SchedulerService();
+const airdropMonitorService = new AirdropMonitorService();
+const headerModifierService = new HeaderModifierService();
 
-class AutomationMessageError extends Error {
-  constructor(
-    message: string,
-    readonly code: string,
-  ) {
-    super(message);
-    this.name = 'AutomationMessageError';
-  }
-}
+// ============================================================
+// 处理器初始化
+// ============================================================
 
-class ContentScriptUnavailableError extends AutomationMessageError {
-  constructor(message = 'Content script unavailable') {
-    super(message, 'CONTENT_SCRIPT_UNAVAILABLE');
-    this.name = 'ContentScriptUnavailableError';
-  }
-}
+const messageHandler = new MessageHandler(schedulerService);
+const alarmHandler = new AlarmHandler(schedulerService, airdropMonitorService);
 
-class TabUnavailableError extends AutomationMessageError {
-  constructor(message = 'Tab unavailable') {
-    super(message, 'TAB_UNAVAILABLE');
-    this.name = 'TabUnavailableError';
-  }
-}
+// ============================================================
+// Bootstrap - 启动时初始化
+// ============================================================
 
-let immediateRunScheduled = false;
+// 先注册请求头修改规则，然后再启动依赖它的服务
+(async () => {
+  await headerModifierService.registerRules();
+  void schedulerService.bootstrap();
+  airdropMonitorService.startMonitoring();
+})();
 
-void bootstrapScheduler();
-void registerHeaderModificationRules();
-initAirdropMonitor();
+// ============================================================
+// 生命周期事件监听
+// ============================================================
 
 chrome.runtime.onInstalled.addListener(() => {
-  void bootstrapScheduler();
-  initAirdropMonitor();
+  console.log('[Background] Extension installed/updated');
+  // 先注册请求头修改规则，然后再启动依赖它的服务
+  void (async () => {
+    await headerModifierService.registerRules();
+    void schedulerService.bootstrap();
+    airdropMonitorService.startMonitoring();
+  })();
 });
 
 chrome.runtime.onStartup.addListener(() => {
-  void bootstrapScheduler();
-  initAirdropMonitor();
+  console.log('[Background] Browser startup');
+  // 先注册请求头修改规则，然后再启动依赖它的服务
+  void (async () => {
+    await headerModifierService.registerRules();
+    void schedulerService.bootstrap();
+    airdropMonitorService.startMonitoring();
+  })();
 });
+
+// ============================================================
+// Alarm 事件监听
+// ============================================================
 
 chrome.alarms.onAlarm.addListener((alarm) => {
-  if (alarm.name !== alarmName) {
-    return;
-  }
-
-  void runAutomationCycle();
+  alarmHandler.handleAlarm(alarm);
 });
 
+// ============================================================
+// 消息路由
+// ============================================================
+
 chrome.runtime.onMessage.addListener((message: RuntimeMessage, sender, sendResponse) => {
+  // 基础消息处理 (来自 content script)
   if (message.type === 'BALANCE_UPDATE') {
-    const currentBalanceValue = normalizeBalance(message.payload?.currentBalance);
-    const tokenSymbol = normalizeTokenSymbol(message.payload?.tokenSymbol);
-    const timestamp = new Date().toISOString();
-    const dateKey = timestamp.slice(0, 10);
-
-    void updateSchedulerState((state) => {
-      const previousDaily = state.dailyBuyVolume;
-      const isSameDay = previousDaily?.date === dateKey;
-      const previousTokenSymbol = state.tokenSymbol ?? state.lastResult?.tokenSymbol;
-      const resolvedTokenSymbol = tokenSymbol ?? previousTokenSymbol;
-
-      // 如果余额和token symbol都没有,则跳过更新
-      if (currentBalanceValue === undefined && !tokenSymbol) {
-        return state;
-      }
-
-      // 如果只有token symbol而没有余额,仅更新token symbol,不影响其他状态
-      if (currentBalanceValue === undefined) {
-        return {
-          ...state,
-          tokenSymbol: resolvedTokenSymbol,
-        };
-      }
-
-      const existingFirstBalance =
-        isSameDay && typeof previousDaily?.firstBalance === 'number'
-          ? previousDaily.firstBalance
-          : undefined;
-      const existingTotal =
-        isSameDay && typeof previousDaily?.total === 'number' ? previousDaily.total : 0;
-      const existingTrades =
-        isSameDay && typeof previousDaily?.tradeCount === 'number' ? previousDaily.tradeCount : 0;
-      const existingAlphaPoints =
-        isSameDay && typeof previousDaily?.alphaPoints === 'number' ? previousDaily.alphaPoints : 0;
-      const existingNextThresholdDelta =
-        isSameDay && typeof previousDaily?.nextThresholdDelta === 'number'
-          ? previousDaily.nextThresholdDelta
-          : 2;
-
-      let nextFirstBalance = existingFirstBalance;
-
-      // 只在余额 > 0 时才设置初始余额,避免页面加载时余额为0的情况
-      if (!isSameDay) {
-        nextFirstBalance = currentBalanceValue > 0 ? currentBalanceValue : undefined;
-      } else if (nextFirstBalance === undefined && currentBalanceValue > 0) {
-        nextFirstBalance = currentBalanceValue;
-      }
-
-      const nextDaily = {
-        date: dateKey,
-        total: existingTotal,
-        alphaPoints: existingAlphaPoints,
-        nextThresholdDelta: existingNextThresholdDelta,
-        tradeCount: existingTrades,
-        firstBalance: nextFirstBalance,
-      } as const;
-
-      return {
-        ...state,
-        tokenSymbol: resolvedTokenSymbol,
-        dailyBuyVolume: nextDaily,
-        lastResult: state.lastResult
-          ? {
-              ...state.lastResult,
-              firstBalanceToday: nextDaily.firstBalance,
-            }
-          : undefined,
-      };
-    });
-
-    sendResponse({ acknowledged: true });
-    return true;
+    return messageHandler.handleBalanceUpdate(message, sendResponse);
   }
 
   if (message.type === 'ORDER_HISTORY_SNAPSHOT') {
-    const payload = message.payload;
-    const dateKeyCandidate = typeof payload.date === 'string' ? payload.date : undefined;
-    const now =
-      typeof payload.fetchedAt === 'number' && Number.isFinite(payload.fetchedAt)
-        ? new Date(payload.fetchedAt)
-        : new Date();
-    const timestamp = now.toISOString();
-    const dateKey = dateKeyCandidate ?? timestamp.slice(0, 10);
-    const totalBuyVolume = normalizeVolumeDelta(payload.totalBuyVolume);
-    const buyOrderCount = normalizeCountDelta(payload.buyOrderCount);
-    const { points: alphaPoints, nextThresholdDelta } = calculateAlphaPointStats(totalBuyVolume);
-    let autoStopTriggered = false;
-
-    void updateSchedulerState((state) => {
-      const previousDaily = state.dailyBuyVolume;
-      const isSameDay = previousDaily?.date === dateKey;
-      const existingFirstBalance =
-        isSameDay && typeof previousDaily?.firstBalance === 'number'
-          ? previousDaily.firstBalance
-          : undefined;
-
-      const nextDaily = {
-        date: dateKey,
-        total: totalBuyVolume,
-        alphaPoints,
-        nextThresholdDelta,
-        tradeCount: buyOrderCount,
-        firstBalance: existingFirstBalance,
-      } as const;
-
-      const configuredTarget =
-        typeof state.settings?.pointsTarget === 'number'
-          ? state.settings.pointsTarget
-          : DEFAULT_POINTS_TARGET;
-      const pointsTargetReached = alphaPoints >= configuredTarget;
-      const tradeLimitReached = buyOrderCount >= MAX_SUCCESSFUL_TRADES;
-      const shouldAutoStop = state.isEnabled && (pointsTargetReached || tradeLimitReached);
-      autoStopTriggered = shouldAutoStop;
-
-      const autoStopMessages: string[] = [];
-
-      if (pointsTargetReached) {
-        autoStopMessages.push(
-          `Points target reached: ${alphaPoints} ≥ ${configuredTarget}. Automation paused.`,
-        );
-      }
-
-      if (tradeLimitReached) {
-        autoStopMessages.push(SUCCESSFUL_TRADES_LIMIT_MESSAGE);
-      }
-
-      const previousTokenSymbol = state.tokenSymbol ?? state.lastResult?.tokenSymbol;
-      const resolvedTokenSymbol = previousTokenSymbol;
-      const previousDetails = state.lastResult?.details;
-      const detailMessages: string[] = [];
-
-      if (previousDetails) {
-        detailMessages.push(previousDetails);
-      }
-
-      if (autoStopMessages.length > 0) {
-        detailMessages.push(...autoStopMessages);
-      }
-
-      const mergedDetails =
-        detailMessages.length > 0 ? detailMessages.join(' • ') : previousDetails;
-
-      const nextLastResult = {
-        timestamp,
-        details: mergedDetails,
-        averagePrice: state.lastResult?.averagePrice,
-        tradeCount: state.lastResult?.tradeCount,
-        buyVolumeToday: nextDaily.total,
-        alphaPointsToday: nextDaily.alphaPoints,
-        buyVolumeToNextPoint: nextDaily.nextThresholdDelta,
-        successfulTradesToday: nextDaily.tradeCount,
-        tokenSymbol: resolvedTokenSymbol,
-        firstBalanceToday: nextDaily.firstBalance,
-      } as const;
-
-      return {
-        ...state,
-        isEnabled: shouldAutoStop ? false : state.isEnabled,
-        isRunning: shouldAutoStop ? false : state.isRunning,
-        lastError: shouldAutoStop ? undefined : state.lastError,
-        tokenSymbol: resolvedTokenSymbol,
-        dailyBuyVolume: nextDaily,
-        lastResult: nextLastResult,
-        requiresLogin: false,
-        sessionStoppedAt: shouldAutoStop ? timestamp : state.sessionStoppedAt,
-      };
-    });
-
-    sendResponse({ acknowledged: true });
-    if (autoStopTriggered) {
-      void clearAutomationAlarm();
-    }
-    return true;
+    return messageHandler.handleOrderHistorySnapshot(message, sendResponse);
   }
 
   if (message.type === 'TASK_COMPLETE') {
-    const timestamp = new Date().toISOString();
-    const { success, details, meta } = message.payload;
-    const normalizedDetails = normalizeDetail(details);
-    const lastError = success ? undefined : (normalizedDetails ?? 'Unknown error');
-    const buyVolumeDelta = normalizeVolumeDelta(meta?.buyVolumeDelta);
-    const currentBalanceValue = normalizeBalance(
-      meta?.currentBalance ?? meta?.availableBalanceBeforeOrder,
-    );
-    const dateKey = timestamp.slice(0, 10);
-    const tokenSymbol = normalizeTokenSymbol(meta?.tokenSymbol);
-    let autoStopTriggered = false;
-
-    if (success && meta?.averagePrice !== undefined) {
-      // eslint-disable-next-line no-console
-      console.log('[dddd-alpah-extension] Last VWAP result', {
-        averagePrice: meta.averagePrice,
-        tradeCount: meta.tradeCount,
-        buyVolumeDelta,
-        tokenSymbol,
-        details,
-        timestamp,
-      });
-    }
-
-    void updateSchedulerState((state) => {
-      const previousDaily = state.dailyBuyVolume;
-      const isSameDay = previousDaily?.date === dateKey;
-      const existingTotal =
-        isSameDay && typeof previousDaily?.total === 'number' ? previousDaily.total : 0;
-      const updatedTotal = existingTotal + buyVolumeDelta;
-      const existingTrades =
-        isSameDay && typeof previousDaily?.tradeCount === 'number' ? previousDaily.tradeCount : 0;
-      const existingFirstBalance =
-        isSameDay && typeof previousDaily?.firstBalance === 'number'
-          ? previousDaily.firstBalance
-          : undefined;
-      let nextFirstBalance = existingFirstBalance;
-
-      // 只在余额 > 0 时才设置初始余额
-      if (currentBalanceValue !== undefined && currentBalanceValue > 0) {
-        if (!isSameDay) {
-          nextFirstBalance = currentBalanceValue;
-        } else if (nextFirstBalance === undefined) {
-          nextFirstBalance = currentBalanceValue;
-        }
-      } else if (!isSameDay) {
-        nextFirstBalance = undefined;
-      }
-
-      const { points: alphaPoints, nextThresholdDelta } = calculateAlphaPointStats(updatedTotal);
-      const previousTokenSymbol = state.tokenSymbol ?? state.lastResult?.tokenSymbol;
-      const resolvedTokenSymbol = tokenSymbol ?? previousTokenSymbol;
-      const configuredTarget =
-        typeof state.settings?.pointsTarget === 'number'
-          ? state.settings.pointsTarget
-          : DEFAULT_POINTS_TARGET;
-      const lastResultTimestamp = state.lastResult?.timestamp;
-      const lastResultDateMatches =
-        typeof lastResultTimestamp === 'string' && lastResultTimestamp.slice(0, 10) === dateKey;
-      const lastSnapshotTrades =
-        lastResultDateMatches && typeof state.lastResult?.successfulTradesToday === 'number'
-          ? state.lastResult.successfulTradesToday
-          : 0;
-      const nextTradeCount = Math.max(existingTrades, lastSnapshotTrades);
-      const pointsTargetReached = alphaPoints >= configuredTarget;
-      const tradeLimitReached = nextTradeCount >= MAX_SUCCESSFUL_TRADES;
-      const shouldAutoStop = state.isEnabled && (pointsTargetReached || tradeLimitReached);
-      autoStopTriggered = shouldAutoStop;
-
-      const autoStopMessages: string[] = [];
-
-      if (pointsTargetReached) {
-        autoStopMessages.push(
-          `Points target reached: ${alphaPoints} ≥ ${configuredTarget}. Automation paused.`,
-        );
-      }
-
-      if (tradeLimitReached) {
-        autoStopMessages.push(SUCCESSFUL_TRADES_LIMIT_MESSAGE);
-      }
-
-      const detailMessages: string[] = [];
-      if (normalizedDetails) {
-        detailMessages.push(normalizedDetails);
-      }
-
-      if (autoStopMessages.length > 0) {
-        detailMessages.push(...autoStopMessages);
-      }
-
-      const mergedDetails = detailMessages.length > 0 ? detailMessages.join(' • ') : undefined;
-
-      const nextDaily = {
-        date: dateKey,
-        total: updatedTotal,
-        alphaPoints,
-        nextThresholdDelta,
-        tradeCount: nextTradeCount,
-        firstBalance: nextFirstBalance,
-      } as const;
-
-      return {
-        ...state,
-        isRunning: false,
-        isEnabled: shouldAutoStop ? false : state.isEnabled,
-        lastRun: timestamp,
-        lastError: shouldAutoStop ? undefined : lastError,
-        tokenSymbol: resolvedTokenSymbol,
-        dailyBuyVolume: nextDaily,
-        lastResult: {
-          timestamp,
-          details: mergedDetails,
-          averagePrice: meta?.averagePrice,
-          tradeCount: meta?.tradeCount,
-          buyVolumeToday: nextDaily.total,
-          alphaPointsToday: nextDaily.alphaPoints,
-          buyVolumeToNextPoint: nextDaily.nextThresholdDelta,
-          successfulTradesToday: nextDaily.tradeCount,
-          tokenSymbol: resolvedTokenSymbol,
-          firstBalanceToday: nextDaily.firstBalance,
-        },
-        requiresLogin: false,
-        sessionStoppedAt: shouldAutoStop ? timestamp : state.sessionStoppedAt,
-      };
-    });
-    sendResponse({ acknowledged: true });
-    if (autoStopTriggered) {
-      void clearAutomationAlarm();
-    }
-    return true;
+    return messageHandler.handleTaskComplete(message, sendResponse);
   }
 
   if (message.type === 'TASK_ERROR') {
-    const normalizedMessage = normalizeDetail(message.payload.message);
-    void updateSchedulerState((state) => ({
-      ...state,
-      isRunning: false,
-      lastError: normalizedMessage ?? 'Unknown error',
-      lastRun: state.lastRun,
-      requiresLogin: normalizedMessage === '请先登录币安',
-    }));
-    sendResponse({ acknowledged: true });
-    return true;
+    return messageHandler.handleTaskError(message, sendResponse);
   }
 
+  // 控制消息处理 (来自 popup)
   if (message.type === 'CONTROL_START') {
     const tokenAddress = 'payload' in message ? message.payload?.tokenAddress : undefined;
     const tabId = 'payload' in message ? message.payload?.tabId : undefined;
-    void (async () => {
-      try {
-        await handleControlStart(tokenAddress, tabId);
-        sendResponse({ acknowledged: true });
-      } catch (error) {
-        sendResponse({ acknowledged: false, error: normalizeError(error) });
-      }
-    })();
+    void messageHandler.handleControlStart(tokenAddress, tabId).then((response) => {
+      sendResponse(response);
+    });
     return true;
   }
 
   if (message.type === 'CONTROL_STOP') {
-    void (async () => {
-      try {
-        await handleControlStop();
-        sendResponse({ acknowledged: true });
-      } catch (error) {
-        sendResponse({ acknowledged: false, error: normalizeError(error) });
-      }
-    })();
+    void messageHandler.handleControlStop().then((response) => {
+      sendResponse(response);
+    });
     return true;
   }
 
   if (message.type === 'FOCUS_WINDOW') {
-    void (async () => {
-      try {
-        const targetWindowId = sender.tab?.windowId;
-        const targetTabId = sender.tab?.id;
-        await handleFocusWindow(targetWindowId, targetTabId);
-        sendResponse({ acknowledged: true });
-      } catch (error) {
-        sendResponse({ acknowledged: false, error: normalizeError(error) });
+    const targetWindowId = sender.tab?.windowId;
+    const targetTabId = sender.tab?.id;
+    void messageHandler.handleFocusWindow(targetWindowId, targetTabId).then((response) => {
+      sendResponse(response);
+    });
+    return true;
+  }
+
+  // 空投监控消息处理 (来自 popup)
+  if (message.type === 'UPDATE_AIRDROP_NOW') {
+    console.log('[Background] 收到立即更新空投数据请求');
+    void airdropMonitorService
+      .fetchAndUpdateAirdrops()
+      .then(() => {
+        sendResponse({ success: true });
+      })
+      .catch((error) => {
+        console.error('[Background] 更新空投数据失败:', error);
+        sendResponse({ success: false, error: error.message });
+      });
+    return true;
+  }
+
+  if (message.type === 'GET_AIRDROP_DATA') {
+    console.log('[Background] 收到获取空投数据请求');
+    const AIRDROP_STORAGE_KEY = 'dddd-alpha-airdrop-data';
+    chrome.storage.local.get(AIRDROP_STORAGE_KEY, (result) => {
+      const data = result[AIRDROP_STORAGE_KEY];
+      if (data?.timestamp) {
+        const age = Date.now() - data.timestamp;
+        console.log(`[Background] 返回缓存数据，数据年龄: ${Math.round(age / 1000)}秒`);
+        sendResponse({ success: true, data });
+      } else {
+        console.log('[Background] 无缓存数据，触发更新');
+        void airdropMonitorService.fetchAndUpdateAirdrops();
+        sendResponse({ success: false, message: '正在获取数据...' });
       }
-    })();
+    });
     return true;
   }
 
   return false;
 });
-
-async function bootstrapScheduler(): Promise<void> {
-  const state = await getSchedulerState();
-
-  if (state.isEnabled) {
-    await ensureAlarm();
-    await updateSchedulerState((current) => ({
-      ...current,
-      isRunning: false,
-      isEnabled: true,
-    }));
-    void scheduleImmediateRun();
-    return;
-  }
-
-  await clearAutomationAlarm();
-  await updateSchedulerState((current) => ({
-    ...current,
-    isRunning: false,
-    isEnabled: false,
-  }));
-}
-
-async function ensureAlarm(): Promise<void> {
-  const periodInMinutes = Math.max(intervalMinutes, MIN_ALARM_INTERVAL_MINUTES);
-
-  chrome.alarms.create(alarmName, {
-    delayInMinutes: INITIAL_DELAY_MINUTES,
-    periodInMinutes,
-  });
-}
-
-async function scheduleImmediateRun(options: RunOptions = {}): Promise<void> {
-  if (immediateRunScheduled) {
-    return;
-  }
-
-  immediateRunScheduled = true;
-
-  try {
-    await runAutomationCycle(options);
-  } catch (error) {
-    // eslint-disable-next-line no-console
-    console.warn('[dddd-alpah-extension] Immediate automation run failed', error);
-  } finally {
-    immediateRunScheduled = false;
-  }
-}
-
-interface RunOptions {
-  force?: boolean;
-  trigger?: 'schedule' | 'manual';
-  tokenAddressOverride?: string;
-  targetTabId?: number;
-}
-
-async function runAutomationCycle(options: RunOptions = {}): Promise<void> {
-  const { force = false, trigger = 'schedule', tokenAddressOverride, targetTabId } = options;
-  const state = await getSchedulerState();
-
-  if (!force && !state.isEnabled) {
-    if (state.isRunning) {
-      await updateSchedulerState((current) => ({
-        ...current,
-        isRunning: false,
-      }));
-    }
-    return;
-  }
-
-  await updateSchedulerState((current) => ({
-    ...current,
-    isRunning: true,
-    lastError: undefined,
-    isEnabled: force ? current.isEnabled : true,
-  }));
-
-  try {
-    const effectiveToken =
-      sanitizeTokenAddress(tokenAddressOverride) ??
-      state.settings?.tokenAddress ??
-      DEFAULT_AUTOMATION.tokenAddress;
-
-    let tab: chrome.tabs.Tab | undefined;
-
-    // If a specific tab ID is provided, use it
-    if (typeof targetTabId === 'number' && Number.isFinite(targetTabId)) {
-      const existingTab = await getTab(targetTabId).catch(() => undefined);
-      if (existingTab?.id !== undefined) {
-        const existingToken =
-          typeof existingTab.url === 'string' ? sanitizeTokenAddress(existingTab.url) : undefined;
-        if (existingToken === effectiveToken) {
-          tab = existingTab;
-        }
-      }
-    }
-
-    // If no tab ID provided or the provided tab is invalid, find an active Binance Alpha tab
-    if (!tab) {
-      tab = await findActiveBinanceAlphaTab(effectiveToken);
-    }
-
-    if (!tab?.id) {
-      throw new Error(
-        'No valid Binance Alpha tab found. Please open the token page in your browser.',
-      );
-    }
-
-    const runtimeMessage: RuntimeMessage =
-      trigger === 'manual' ? { type: 'RUN_TASK_ONCE' } : { type: 'RUN_TASK' };
-    await sendMessageToTab(tab.id, runtimeMessage);
-  } catch (error) {
-    let message: string;
-
-    if (error instanceof ContentScriptUnavailableError) {
-      message = '未能连接到 Binance Alpha 页面，请确认页面已完全加载或刷新页面后重试。';
-    } else if (error instanceof TabUnavailableError) {
-      message = '目标页面已关闭或跳转，请重新打开对应的 Binance Alpha 页面后重试。';
-    } else {
-      message = normalizeError(error);
-    }
-
-    await updateSchedulerState((state) => ({
-      ...state,
-      isRunning: false,
-      lastError: message,
-      lastRun: new Date().toISOString(),
-    }));
-  }
-}
-
-async function handleControlStart(tokenAddress?: string, tabId?: number): Promise<void> {
-  const state = await getSchedulerState();
-  const todayKey = new Date().toISOString().slice(0, 10);
-  let tradesToday = 0;
-
-  if (
-    state.dailyBuyVolume?.date === todayKey &&
-    typeof state.dailyBuyVolume.tradeCount === 'number'
-  ) {
-    tradesToday = state.dailyBuyVolume.tradeCount;
-  } else if (
-    typeof state.lastResult?.successfulTradesToday === 'number' &&
-    typeof state.lastResult?.timestamp === 'string' &&
-    state.lastResult.timestamp.slice(0, 10) === todayKey
-  ) {
-    tradesToday = state.lastResult.successfulTradesToday;
-  }
-
-  if (tradesToday >= MAX_SUCCESSFUL_TRADES) {
-    throw new AutomationMessageError(SUCCESSFUL_TRADES_LIMIT_MESSAGE, 'TRADE_LIMIT_REACHED');
-  }
-
-  const sanitizedTokenOverride = sanitizeTokenAddress(tokenAddress);
-  const sessionStartedAt = new Date().toISOString();
-
-  await updateSchedulerState((current) => {
-    const resolvedToken =
-      sanitizedTokenOverride ?? current.settings.tokenAddress ?? DEFAULT_AUTOMATION.tokenAddress;
-
-    return {
-      ...current,
-      isEnabled: true,
-      sessionStartedAt,
-      sessionStoppedAt: undefined,
-      settings: {
-        ...current.settings,
-        tokenAddress: resolvedToken,
-      },
-    };
-  });
-  await ensureAlarm();
-  const sanitizedTabId = sanitizeTabId(tabId);
-  void scheduleImmediateRun({
-    tokenAddressOverride: sanitizedTokenOverride,
-    targetTabId: sanitizedTabId,
-  });
-}
-
-async function handleControlStop(): Promise<void> {
-  const sessionStoppedAt = new Date().toISOString();
-  await clearAutomationAlarm();
-  await updateSchedulerState((state) => ({
-    ...state,
-    isEnabled: false,
-    isRunning: false,
-    sessionStoppedAt,
-  }));
-}
-
-async function handleFocusWindow(windowId?: number, tabId?: number): Promise<void> {
-  try {
-    let targetWindowId: number | undefined | null = windowId ?? null;
-
-    if (tabId !== undefined) {
-      try {
-        const tab = await chrome.tabs.get(tabId);
-        if (tab?.windowId !== undefined) {
-          targetWindowId = tab.windowId;
-        }
-
-        if (tab?.id !== undefined && tab.active !== true) {
-          await chrome.tabs.update(tab.id, { active: true });
-        }
-      } catch (tabError) {
-        // eslint-disable-next-line no-console
-        console.warn('[dddd-alpha-extension] Failed to resolve tab for focus:', tabError);
-      }
-    }
-
-    if (!targetWindowId) {
-      try {
-        const lastFocused = await chrome.windows.getLastFocused({ populate: false });
-        targetWindowId = lastFocused?.id ?? null;
-      } catch (lastFocusedError) {
-        // eslint-disable-next-line no-console
-        console.warn('[dddd-alpha-extension] Failed to get last focused window:', lastFocusedError);
-      }
-    }
-
-    if (!targetWindowId) {
-      const windows = await chrome.windows.getAll();
-      const focusedWindow = windows.find((win) => win.focused);
-      targetWindowId = focusedWindow?.id ?? windows[0]?.id ?? null;
-    }
-
-    if (targetWindowId) {
-      await chrome.windows.update(targetWindowId, {
-        focused: true,
-        drawAttention: true,
-        state: 'normal',
-      });
-    }
-  } catch (error) {
-    // eslint-disable-next-line no-console
-    console.error('[dddd-alpha-extension] Failed to focus window:', error);
-    throw error;
-  }
-}
-
-async function clearAutomationAlarm(): Promise<void> {
-  await new Promise<void>((resolve) => {
-    chrome.alarms.clear(alarmName, () => resolve());
-  });
-}
-
-async function findActiveBinanceAlphaTab(
-  tokenAddress: string,
-): Promise<chrome.tabs.Tab | undefined> {
-  const allTabs = await chrome.tabs.query({});
-
-  // First, try to find an active tab in the current window with matching token
-  const activeTabs = allTabs.filter((tab) => tab.active && tab.url);
-  for (const tab of activeTabs) {
-    if (!tab.url) continue;
-    const match = tab.url.match(BINANCE_ALPHA_PATTERN);
-    if (match && match[1].toLowerCase() === tokenAddress.toLowerCase()) {
-      return tab;
-    }
-  }
-
-  // Second, try to find any tab with matching token (prioritize current window)
-  const currentWindowTabs = allTabs.filter((tab) => tab.url);
-  for (const tab of currentWindowTabs) {
-    if (!tab.url) continue;
-    const match = tab.url.match(BINANCE_ALPHA_PATTERN);
-    if (match && match[1].toLowerCase() === tokenAddress.toLowerCase()) {
-      return tab;
-    }
-  }
-
-  return undefined;
-}
-
-function sanitizeTokenAddress(value?: string): string | undefined {
-  if (!value) {
-    return undefined;
-  }
-
-  const match = value.trim().match(/0x[a-fA-F0-9]{40}/u);
-  return match ? match[0].toLowerCase() : undefined;
-}
-
-function sanitizeTabId(value?: number): number | undefined {
-  if (typeof value !== 'number' || !Number.isFinite(value)) {
-    return undefined;
-  }
-
-  return value;
-}
-
-const MAX_MESSAGE_ATTEMPTS = 12;
-const RECEIVING_END_MISSING_PATTERN = /Receiving end does not exist/i;
-const TAB_UNAVAILABLE_PATTERN = /(No tab with id|The tab was closed|Tab .* not found)/i;
-
-async function sendMessageToTab(
-  tabId: number,
-  message: RuntimeMessage,
-  attempt = 1,
-): Promise<void> {
-  try {
-    await new Promise<void>((resolve, reject) => {
-      chrome.tabs.sendMessage(tabId, message, (response) => {
-        const runtimeError = chrome.runtime.lastError;
-        if (runtimeError) {
-          reject(runtimeError);
-          return;
-        }
-
-        if (response?.acknowledged) {
-          resolve();
-          return;
-        }
-
-        resolve();
-      });
-    });
-  } catch (error) {
-    const messageText = normalizeError(error);
-    const receivingEndMissing = RECEIVING_END_MISSING_PATTERN.test(messageText);
-    const tabMissing = TAB_UNAVAILABLE_PATTERN.test(messageText);
-    const canRetry = attempt < MAX_MESSAGE_ATTEMPTS && receivingEndMissing;
-
-    if (canRetry) {
-      await delay(250 * attempt + 250);
-      await sendMessageToTab(tabId, message, attempt + 1);
-      return;
-    }
-
-    if (receivingEndMissing) {
-      throw new ContentScriptUnavailableError(messageText);
-    }
-
-    if (tabMissing) {
-      throw new TabUnavailableError(messageText);
-    }
-
-    throw new AutomationMessageError(messageText, 'MESSAGE_FAILED');
-  }
-}
-
-function delay(milliseconds: number): Promise<void> {
-  return new Promise((resolve) => {
-    setTimeout(resolve, milliseconds);
-  });
-}
-
-function normalizeVolumeDelta(value: unknown): number {
-  const numeric = typeof value === 'number' ? value : Number(value);
-  if (!Number.isFinite(numeric) || numeric <= 0) {
-    return 0;
-  }
-
-  return numeric;
-}
-
-function normalizeCountDelta(value: unknown): number {
-  const numeric = typeof value === 'number' ? value : Number(value);
-  if (!Number.isFinite(numeric) || numeric <= 0) {
-    return 0;
-  }
-
-  return Math.floor(numeric);
-}
-
-function normalizeBalance(value: unknown): number | undefined {
-  const numeric = typeof value === 'number' ? value : Number(value);
-  if (!Number.isFinite(numeric) || numeric < 0) {
-    return undefined;
-  }
-
-  return numeric;
-}
-
-function normalizeTokenSymbol(value: unknown): string | undefined {
-  if (typeof value !== 'string') {
-    return undefined;
-  }
-
-  const trimmed = value.trim();
-  if (trimmed.length === 0) {
-    return undefined;
-  }
-
-  return trimmed;
-}
-
-function normalizeError(error: unknown): string {
-  if (error instanceof Error) {
-    return error.message;
-  }
-
-  if (error && typeof error === 'object') {
-    const message = (error as { message?: unknown }).message;
-    if (typeof message === 'string' && message.trim().length > 0) {
-      return message;
-    }
-  }
-
-  try {
-    return String(error);
-  } catch {
-    return 'Unknown error';
-  }
-}
-
-function normalizeDetail(detail: unknown): string | undefined {
-  if (detail === undefined || detail === null) {
-    return undefined;
-  }
-
-  if (typeof detail === 'string') {
-    return detail;
-  }
-
-  if (detail && typeof detail === 'object') {
-    const message = (detail as { message?: unknown }).message;
-    if (typeof message === 'string') {
-      return message;
-    }
-
-    try {
-      return JSON.stringify(detail);
-    } catch {
-      return String(detail);
-    }
-  }
-
-  return String(detail);
-}

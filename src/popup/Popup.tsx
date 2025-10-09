@@ -1646,7 +1646,12 @@ export function Popup(): React.ReactElement {
                   icon={<PlayCircleOutlined style={{ fontSize: 14 }} />}
                   loading={controlsBusy}
                   disabled={isStartDisabled}
-                  onClick={() => void handleStart()}
+                  onClick={() => {
+                    handleStart().catch((error) => {
+                      const errorMessage = error instanceof Error ? error.message : String(error);
+                      alert(`无法正常启动自动化：错误\n${errorMessage}`);
+                    });
+                  }}
                   size="middle"
                   style={{
                     background: isStartDisabled

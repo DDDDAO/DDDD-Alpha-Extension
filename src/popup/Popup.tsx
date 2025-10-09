@@ -2276,7 +2276,10 @@ export function Popup(): React.ReactElement {
                   </Space>
                 }
                 value={formatCostRatio(calculateCostRatio())}
-                valueStyle={{ fontSize: 14 }}
+                valueStyle={{
+                  fontSize: 14,
+                  color: getCostRatioColor(calculateCostRatio()),
+                }}
               />
             </Col>
             <Col span={12}>
@@ -2717,6 +2720,23 @@ function formatCostRatio(ratio: number | undefined): string {
     return `${(ratio * 10000).toFixed(2)}‱`;
   }
   return '—';
+}
+
+function getCostRatioColor(ratio: number | undefined): string {
+  if (typeof ratio !== 'number' || !Number.isFinite(ratio)) {
+    return 'inherit';
+  }
+
+  // 绿色（<0.5‱）
+  if (ratio < 0.00005) {
+    return '#52c41a';
+  }
+  // 黄色（0.5‱-1‱）
+  if (ratio < 0.0001) {
+    return '#faad14';
+  }
+  // 红色（>1‱）
+  return '#f5222d';
 }
 
 function extractTokenFromUrl(url: string): string | null {

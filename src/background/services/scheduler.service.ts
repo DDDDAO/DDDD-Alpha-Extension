@@ -4,9 +4,13 @@
  */
 
 import { DEFAULT_AUTOMATION } from '../../config/defaults.js';
-import type { RuntimeMessage } from '../../lib/messages.js';
-import { getSchedulerState, updateSchedulerState } from '../../lib/storage.js';
-import { getTab } from '../../lib/tabs.js';
+import type { RuntimeMessage } from '../../lib/chrome/messages.js';
+import {
+  getSchedulerState,
+  type SchedulerState,
+  updateSchedulerState,
+} from '../../lib/chrome/storage.js';
+import { getTab } from '../../lib/chrome/tabs.js';
 
 const { alarmName, intervalMinutes } = DEFAULT_AUTOMATION;
 const MIN_ALARM_INTERVAL_MINUTES = 0.5;
@@ -51,7 +55,7 @@ export class SchedulerService {
 
     if (state.isEnabled) {
       await this.ensureAlarm();
-      await updateSchedulerState((current) => ({
+      await updateSchedulerState((current: SchedulerState) => ({
         ...current,
         isRunning: false,
         isEnabled: true,
@@ -61,7 +65,7 @@ export class SchedulerService {
     }
 
     await this.clearAlarm();
-    await updateSchedulerState((current) => ({
+    await updateSchedulerState((current: SchedulerState) => ({
       ...current,
       isRunning: false,
       isEnabled: false,
@@ -103,7 +107,7 @@ export class SchedulerService {
 
     if (!force && !state.isEnabled) {
       if (state.isRunning) {
-        await updateSchedulerState((current) => ({
+        await updateSchedulerState((current: SchedulerState) => ({
           ...current,
           isRunning: false,
         }));
@@ -111,7 +115,7 @@ export class SchedulerService {
       return;
     }
 
-    await updateSchedulerState((current) => ({
+    await updateSchedulerState((current: SchedulerState) => ({
       ...current,
       isRunning: true,
       lastError: undefined,
@@ -163,7 +167,7 @@ export class SchedulerService {
         message = error instanceof Error ? error.message : String(error);
       }
 
-      await updateSchedulerState((state) => ({
+      await updateSchedulerState((state: SchedulerState) => ({
         ...state,
         isRunning: false,
         lastError: message,

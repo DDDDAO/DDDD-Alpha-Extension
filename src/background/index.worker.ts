@@ -8,7 +8,7 @@
  * - 符合单一职责原则
  */
 
-import type { RuntimeMessage } from '../lib/messages.js';
+import type { RuntimeMessage } from '../lib/chrome/messages.js';
 import { AlarmHandler } from './handlers/alarm.handler.js';
 import { MessageHandler } from './handlers/message.handler.js';
 import { AirdropMonitorService } from './services/airdrop-monitor.service.js';

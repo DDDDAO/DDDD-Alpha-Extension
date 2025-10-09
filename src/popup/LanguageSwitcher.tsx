@@ -4,7 +4,7 @@ import { Button, Dropdown } from 'antd';
 import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { saveLanguage } from '../i18n/config';
-import { AIRDROP_STORAGE_KEY } from '../lib/airdrop';
+import { AIRDROP_STORAGE_KEY } from '../lib/api/airdrop';
 
 export function LanguageSwitcher(): React.ReactElement {
   const { i18n } = useTranslation();

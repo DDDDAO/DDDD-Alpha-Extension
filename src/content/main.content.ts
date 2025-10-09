@@ -15,21 +15,21 @@ import {
 } from '../config/defaults.js';
 import { SELECTORS } from '../config/selectors.js';
 import { STORAGE_KEY, TOKEN_DIRECTORY_STORAGE_KEY } from '../config/storageKey.js';
-import { calculateAlphaPointStats } from '../lib/alphaPoints.js';
-import { md5 } from '../lib/md5.js';
+import {
+  type BinanceOrderHistoryResponse,
+  buildOrderHistoryUrl,
+  mergeOrderHistoryData,
+  summarizeOrderHistoryData,
+} from '../lib/api/orderHistory.js';
 import {
   type FetchOrderHistoryResponse,
   type OrderHistorySnapshotPayload,
   postRuntimeMessage,
   type RuntimeMessage,
   type TaskResultMeta,
-} from '../lib/messages.js';
-import {
-  type BinanceOrderHistoryResponse,
-  buildOrderHistoryUrl,
-  mergeOrderHistoryData,
-  summarizeOrderHistoryData,
-} from '../lib/orderHistory.js';
+} from '../lib/chrome/messages.js';
+import { calculateAlphaPointStats } from '../lib/utils/alphaPoints.js';
+import { md5 } from '../lib/utils/md5.js';
 
 const ORDER_PLACEMENT_COOLDOWN_MS = 5_000;
 const LIMIT_STATE_TIMEOUT_MS = 2_000;

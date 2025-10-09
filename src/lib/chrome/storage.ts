@@ -7,8 +7,8 @@ import {
   DEFAULT_PRICE_OFFSET_PERCENT,
   DEFAULT_SELL_PRICE_OFFSET_PERCENT,
   type IntervalMode,
-} from '../config/defaults.js';
-import { STORAGE_KEY } from '../config/storageKey.js';
+} from '../../config/defaults.js';
+import { STORAGE_KEY } from '../../config/storageKey.js';
 
 export interface TaskResultSnapshot {
   timestamp: string;

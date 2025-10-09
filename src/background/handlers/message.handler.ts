@@ -11,9 +11,13 @@ import {
   MAX_SUCCESSFUL_TRADES,
   SUCCESSFUL_TRADES_LIMIT_MESSAGE,
 } from '../../config/defaults.js';
-import { calculateAlphaPointStats } from '../../lib/alphaPoints.js';
-import type { RuntimeMessage } from '../../lib/messages.js';
-import { getSchedulerState, updateSchedulerState } from '../../lib/storage.js';
+import type { RuntimeMessage } from '../../lib/chrome/messages.js';
+import {
+  getSchedulerState,
+  type SchedulerState,
+  updateSchedulerState,
+} from '../../lib/chrome/storage.js';
+import { calculateAlphaPointStats } from '../../lib/utils/alphaPoints.js';
 import type { SchedulerService } from '../services/scheduler.service.js';
 
 /**
@@ -40,7 +44,7 @@ export class MessageHandler {
     const timestamp = new Date().toISOString();
     const dateKey = timestamp.slice(0, 10);
 
-    void updateSchedulerState((state) => {
+    void updateSchedulerState((state: SchedulerState) => {
       const previousDaily = state.dailyBuyVolume;
       const isSameDay = previousDaily?.date === dateKey;
       const previousTokenSymbol = state.tokenSymbol ?? state.lastResult?.tokenSymbol;
@@ -128,7 +132,7 @@ export class MessageHandler {
     const { points: alphaPoints, nextThresholdDelta } = calculateAlphaPointStats(totalBuyVolume);
     let autoStopTriggered = false;
 
-    void updateSchedulerState((state) => {
+    void updateSchedulerState((state: SchedulerState) => {
       const previousDaily = state.dailyBuyVolume;
       const isSameDay = previousDaily?.date === dateKey;
       const existingFirstBalance =
@@ -242,7 +246,7 @@ export class MessageHandler {
       });
     }
 
-    void updateSchedulerState((state) => {
+    void updateSchedulerState((state: SchedulerState) => {
       const previousDaily = state.dailyBuyVolume;
       const isSameDay = previousDaily?.date === dateKey;
       const existingTotal =
@@ -355,7 +359,7 @@ export class MessageHandler {
     if (message.type !== 'TASK_ERROR') return false;
 
     const normalizedMessage = this.normalizeDetail(message.payload.message);
-    void updateSchedulerState((state) => ({
+    void updateSchedulerState((state: SchedulerState) => ({
       ...state,
       isRunning: false,
       lastError: normalizedMessage ?? 'Unknown error',
@@ -440,7 +444,7 @@ export class MessageHandler {
       const sanitizedTokenOverride = this.sanitizeTokenAddress(tokenAddress);
       const sessionStartedAt = new Date().toISOString();
 
-      await updateSchedulerState((current) => {
+      await updateSchedulerState((current: SchedulerState) => {
         const resolvedToken =
           sanitizedTokenOverride ??
           current.settings.tokenAddress ??
@@ -481,7 +485,7 @@ export class MessageHandler {
     try {
       const sessionStoppedAt = new Date().toISOString();
       await this.schedulerService.clearAlarm();
-      await updateSchedulerState((state) => ({
+      await updateSchedulerState((state: SchedulerState) => ({
         ...state,
         isEnabled: false,
         isRunning: false,

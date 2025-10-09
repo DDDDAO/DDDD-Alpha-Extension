@@ -9,8 +9,8 @@ import type {
   AirdropData,
   PricesApiResponse,
   ProcessedAirdrop,
-} from '../../lib/airdrop.js';
-import { AIRDROP_STORAGE_KEY, processAirdropApiResponse } from '../../lib/airdrop.js';
+} from '../../lib/api/airdrop.js';
+import { AIRDROP_STORAGE_KEY, processAirdropApiResponse } from '../../lib/api/airdrop.js';
 
 // 常量定义
 const ALPHA123_ORIGIN = 'https://alpha123.uk';

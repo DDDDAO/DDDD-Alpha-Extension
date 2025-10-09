@@ -43,17 +43,17 @@ import {
   TOKEN_DIRECTORY_STORAGE_KEY,
 } from '../config/storageKey.js';
 import { useI18nUrl } from '../i18n/useI18nUrl';
-import type { ProcessedAirdrop } from '../lib/airdrop.js';
-import { AIRDROP_STORAGE_KEY } from '../lib/airdrop.js';
-import { calculateAlphaPointStats } from '../lib/alphaPoints.js';
+import type { ProcessedAirdrop } from '../lib/api/airdrop.js';
+import { AIRDROP_STORAGE_KEY } from '../lib/api/airdrop.js';
+import { buildOrderHistoryUrl, summarizeOrderHistoryData } from '../lib/api/orderHistory.js';
 import type {
   FetchOrderHistoryResponse,
   OrderHistorySnapshotPayload,
   RuntimeMessage,
-} from '../lib/messages.js';
-import { postRuntimeMessage } from '../lib/messages.js';
-import { buildOrderHistoryUrl, summarizeOrderHistoryData } from '../lib/orderHistory.js';
+} from '../lib/chrome/messages.js';
+import { postRuntimeMessage } from '../lib/chrome/messages.js';
 import type { PriceOffsetMode, SchedulerState } from '../lib/storage';
+import { calculateAlphaPointStats } from '../lib/utils/alphaPoints.js';
 import { LanguageSwitcher } from './LanguageSwitcher';
 
 const { Text, Link, Title } = Typography;
@@ -2281,7 +2281,17 @@ export function Popup(): React.ReactElement {
                   </Space>
                 }
                 value={formatCostRatio(calculateCostRatio())}
-                valueStyle={{ fontSize: 14 }}
+                valueStyle={{
+                  fontSize: 14,
+                  color: (() => {
+                    const ratio = calculateCostRatio();
+                    if (typeof ratio === 'number' && Number.isFinite(ratio)) {
+                      const ratioInBasisPoints = ratio * 10000;
+                      return getCostRatioColor(ratioInBasisPoints);
+                    }
+                    return undefined;
+                  })(),
+                }}
               />
             </Col>
             <Col span={12}>
@@ -2715,6 +2725,22 @@ function formatNumber(
     return '—';
   }
   return value.toLocaleString('en-US', options);
+}
+
+/**
+ * 根据损耗率返回对应的颜色
+ * 绿色: <0.5‱
+ * 黄色: 0.5‱-1‱
+ * 红色: >1‱
+ */
+function getCostRatioColor(ratioInBasisPoints: number): string {
+  if (ratioInBasisPoints < 0.5) {
+    return '#52c41a'; // 绿色
+  } else if (ratioInBasisPoints <= 1.0) {
+    return '#faad14'; // 黄色
+  } else {
+    return '#ff4d4f'; // 红色
+  }
 }
 
 function formatCostRatio(ratio: number | undefined): string {

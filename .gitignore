@@ -19,3 +19,6 @@ yarn-error.log*
 
 # Local settings
 .claude/settings.local.json
+
+# Spec workflow
+.spec-workflow/

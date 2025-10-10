@@ -3,7 +3,7 @@
   "name": "DDDD Alpha Extension",
   "version": "0.2.0",
   "description": "Schedules VWAP monitoring and automation tasks on Binance Alpha pages.",
-  "permissions": ["alarms", "storage", "tabs", "declarativeNetRequestWithHostAccess", "scripting"],
+  "permissions": ["alarms", "storage", "tabs", "declarativeNetRequestWithHostAccess"],
   "host_permissions": ["https://www.binance.com/*", "https://alpha123.uk/*"],
   "background": {
     "service_worker": "dist/background/index.worker.js",

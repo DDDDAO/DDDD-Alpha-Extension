@@ -330,7 +330,8 @@ export function processAirdropApiResponse(
   const nowTimestamp = Math.floor(Date.now() / 1000);
 
   apiData.airdrops.forEach((airdrop) => {
-    if (!airdrop?.token) {
+    // 如果没有基本的airdrop对象，跳过
+    if (!airdrop) {
       return;
     }
 
@@ -389,9 +390,13 @@ export function processAirdropApiResponse(
       effectiveLocale,
     );
 
+    // 处理空token：如果token为空字符串或null，使用"-"
+    const tokenSymbol = sanitizeText(airdrop.token) ?? '-';
+    const tokenName = sanitizeText(airdrop.name) ?? tokenSymbol;
+
     const processed: ProcessedAirdrop = {
-      symbol: airdrop.token,
-      name: sanitizeText(airdrop.name) ?? airdrop.token,
+      symbol: tokenSymbol,
+      name: tokenName,
       quantity: withDash(airdrop.amount),
       threshold: withDash(airdrop.points),
       time: displayTime,

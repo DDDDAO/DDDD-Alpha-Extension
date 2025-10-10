@@ -8,7 +8,7 @@ import {
   DEFAULT_SELL_PRICE_OFFSET_PERCENT,
   type IntervalMode,
 } from '../config/defaults.js';
-import { STORAGE_KEY } from '../config/storageKey.js';
+import { HISTORY_DATA_STORAGE_KEY, STORAGE_KEY } from '../config/storageKey.js';
 
 export interface TaskResultSnapshot {
   timestamp: string;
@@ -266,4 +266,46 @@ export async function updateSchedulerState(
 ): Promise<void> {
   const current = await getSchedulerState();
   await setSchedulerState(mutation(current));
+}
+
+// 历史数据相关
+export interface DailyHistoryData {
+  date: string; // YYYY-MM-DD
+  totalCost?: number; // 当日总损耗
+  costRatio?: number;
+  buyVolume?: number;
+  alphaPoints?: number;
+  tradeCount?: number;
+  averagePrice?: number;
+  initialBalance?: number;
+  currentBalance?: number;
+  tokenSymbol?: string;
+}
+
+export interface HistoryDataStore {
+  [date: string]: DailyHistoryData;
+}
+
+export async function getHistoryData(): Promise<HistoryDataStore> {
+  return new Promise((resolve) => {
+    chrome.storage.local.get([HISTORY_DATA_STORAGE_KEY], (result) => {
+      const stored = result[HISTORY_DATA_STORAGE_KEY] as HistoryDataStore | undefined;
+      resolve(stored ?? {});
+    });
+  });
+}
+
+export async function saveHistoryData(data: DailyHistoryData): Promise<void> {
+  const history = await getHistoryData();
+  history[data.date] = data;
+
+  return new Promise((resolve, reject) => {
+    chrome.storage.local.set({ [HISTORY_DATA_STORAGE_KEY]: history }, () => {
+      if (chrome.runtime.lastError) {
+        reject(chrome.runtime.lastError);
+        return;
+      }
+      resolve();
+    });
+  });
 }

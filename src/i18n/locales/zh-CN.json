@@ -97,6 +97,20 @@
     "time": "时间",
     "price": "价值"
   },
+  "history": {
+    "title": "历史数据日历",
+    "totalCost": "总损耗",
+    "costRatio": "损耗率",
+    "buyVolume": "买入量",
+    "alphaPoints": "积分",
+    "tradeCount": "交易次数",
+    "tokenSymbol": "代币",
+    "noData": "当日无数据",
+    "saveButton": "保存当日",
+    "saveSuccess": "保存成功",
+    "saveFailed": "保存失败",
+    "noDataToSave": "暂无数据可保存"
+  },
   "footer": {
     "madeBy": "Made with ❤️ by",
     "binanceWallet": "币安钱包绑定邀请码,手续费9折",

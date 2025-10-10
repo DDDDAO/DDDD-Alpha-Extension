@@ -53,7 +53,9 @@ import type {
 } from '../lib/messages.js';
 import { postRuntimeMessage } from '../lib/messages.js';
 import { buildOrderHistoryUrl, summarizeOrderHistoryData } from '../lib/orderHistory.js';
-import type { PriceOffsetMode, SchedulerState } from '../lib/storage';
+import type { DailyHistoryData, PriceOffsetMode, SchedulerState } from '../lib/storage';
+import { saveHistoryData } from '../lib/storage';
+import { HistoryCalendar } from './HistoryCalendar';
 import { LanguageSwitcher } from './LanguageSwitcher';
 
 const { Text, Link, Title } = Typography;
@@ -1229,6 +1231,162 @@ export function Popup(): React.ReactElement {
     return undefined;
   }
 
+  // 自动保存历史数据
+  useEffect(() => {
+    const saveCurrentDayData = async () => {
+      if (!snapshot || !activeTab.isSupported) {
+        return;
+      }
+
+      // 计算总损耗
+      const firstBalance =
+        state?.dailyBuyVolume?.date === todayKey
+          ? state.dailyBuyVolume.firstBalance
+          : snapshot.firstBalanceToday;
+      const currentBalance = activeTab.currentBalance;
+
+      let totalCost: number | undefined;
+      if (
+        typeof firstBalance === 'number' &&
+        Number.isFinite(firstBalance) &&
+        typeof currentBalance === 'number' &&
+        Number.isFinite(currentBalance)
+      ) {
+        const difference = firstBalance - currentBalance;
+        totalCost = difference > 0 ? difference : 0;
+      }
+
+      // 计算买入量
+      const buyVolume =
+        state?.dailyBuyVolume?.date === todayKey
+          ? state.dailyBuyVolume.total
+          : snapshot.buyVolumeToday;
+
+      // 计算损耗率
+      let costRatio: number | undefined;
+      if (
+        typeof totalCost === 'number' &&
+        Number.isFinite(totalCost) &&
+        typeof buyVolume === 'number' &&
+        Number.isFinite(buyVolume) &&
+        buyVolume > 0
+      ) {
+        costRatio = totalCost / buyVolume;
+      }
+
+      // 计算今日积分
+      let alphaPoints: number | undefined;
+      if (
+        typeof state?.dailyBuyVolume?.alphaPoints === 'number' &&
+        Number.isFinite(state.dailyBuyVolume.alphaPoints)
+      ) {
+        alphaPoints = state.dailyBuyVolume.alphaPoints;
+      } else if (
+        typeof snapshot.alphaPointsToday === 'number' &&
+        Number.isFinite(snapshot.alphaPointsToday)
+      ) {
+        alphaPoints = snapshot.alphaPointsToday;
+      }
+
+      const historyData: DailyHistoryData = {
+        date: todayKey,
+        totalCost,
+        costRatio,
+        buyVolume,
+        alphaPoints,
+        tradeCount:
+          state?.dailyBuyVolume?.date === todayKey
+            ? state.dailyBuyVolume.tradeCount
+            : snapshot.tradeCount,
+        averagePrice: snapshot.averagePrice,
+        initialBalance: firstBalance,
+        currentBalance: activeTab.currentBalance,
+        tokenSymbol: state?.tokenSymbol || snapshot.tokenSymbol,
+      };
+
+      try {
+        await saveHistoryData(historyData);
+      } catch (error) {
+        console.error('Failed to save history data:', error);
+      }
+    };
+
+    void saveCurrentDayData();
+  }, [state, snapshot, activeTab.currentBalance, activeTab.isSupported, todayKey]);
+
+  // 构造当前日期数据用于手动保存
+  const currentDayData: DailyHistoryData | undefined = React.useMemo(() => {
+    if (!snapshot || !activeTab.isSupported) {
+      return undefined;
+    }
+
+    // 计算总损耗
+    const firstBalance =
+      state?.dailyBuyVolume?.date === todayKey
+        ? state.dailyBuyVolume.firstBalance
+        : snapshot.firstBalanceToday;
+    const currentBalance = activeTab.currentBalance;
+
+    let totalCost: number | undefined;
+    if (
+      typeof firstBalance === 'number' &&
+      Number.isFinite(firstBalance) &&
+      typeof currentBalance === 'number' &&
+      Number.isFinite(currentBalance)
+    ) {
+      const difference = firstBalance - currentBalance;
+      totalCost = difference > 0 ? difference : 0;
+    }
+
+    // 计算买入量
+    const buyVolume =
+      state?.dailyBuyVolume?.date === todayKey
+        ? state.dailyBuyVolume.total
+        : snapshot.buyVolumeToday;
+
+    // 计算损耗率
+    let costRatio: number | undefined;
+    if (
+      typeof totalCost === 'number' &&
+      Number.isFinite(totalCost) &&
+      typeof buyVolume === 'number' &&
+      Number.isFinite(buyVolume) &&
+      buyVolume > 0
+    ) {
+      costRatio = totalCost / buyVolume;
+    }
+
+    // 计算今日积分
+    let alphaPoints: number | undefined;
+    if (
+      typeof state?.dailyBuyVolume?.alphaPoints === 'number' &&
+      Number.isFinite(state.dailyBuyVolume.alphaPoints)
+    ) {
+      alphaPoints = state.dailyBuyVolume.alphaPoints;
+    } else if (
+      typeof snapshot.alphaPointsToday === 'number' &&
+      Number.isFinite(snapshot.alphaPointsToday)
+    ) {
+      alphaPoints = snapshot.alphaPointsToday;
+    }
+
+    return {
+      date: todayKey,
+      totalCost,
+      costRatio,
+      buyVolume,
+      alphaPoints,
+      tradeCount:
+        state?.dailyBuyVolume?.date === todayKey
+          ? state.dailyBuyVolume.tradeCount
+          : snapshot.tradeCount,
+      averagePrice: snapshot.averagePrice,
+      initialBalance: firstBalance,
+      currentBalance: activeTab.currentBalance,
+      tokenSymbol: state?.tokenSymbol || snapshot.tokenSymbol,
+    };
+  }, [state, snapshot, activeTab.currentBalance, activeTab.isSupported, todayKey]);
+
   const openUrlInActiveTab = useCallback(
     (targetUrl: string): void => {
       if (typeof targetUrl !== 'string' || targetUrl.length === 0) {
@@ -2318,6 +2476,9 @@ export function Popup(): React.ReactElement {
           </Row>
         </Card>
       )}
+
+      {/* 历史数据日历 */}
+      <HistoryCalendar currentDayData={currentDayData} />
 
       {/* 空投提醒卡片 */}
       <Card

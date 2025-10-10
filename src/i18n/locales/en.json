@@ -97,6 +97,20 @@
     "time": "Time",
     "price": "Value"
   },
+  "history": {
+    "title": "History Calendar",
+    "totalCost": "Total Cost",
+    "costRatio": "Cost Ratio",
+    "buyVolume": "Buy Volume",
+    "alphaPoints": "Points",
+    "tradeCount": "Trades",
+    "tokenSymbol": "Token",
+    "noData": "No data for this day",
+    "saveButton": "Save Today",
+    "saveSuccess": "Saved successfully",
+    "saveFailed": "Failed to save",
+    "noDataToSave": "No data to save"
+  },
   "footer": {
     "madeBy": "Made with ❤️ by",
     "binanceWallet": "Binance Wallet referral code, 10% fee discount",

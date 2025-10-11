@@ -30,9 +30,13 @@ import {
 import React, { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
+  // 订单监控时间默认值（秒）
+  DEFAULT_BUY_CANCEL_TIME_SEC,
   DEFAULT_BUY_PRICE_OFFSET_PERCENT,
   DEFAULT_INTERVAL_MODE,
+  DEFAULT_SELL_CANCEL_TIME_SEC,
   DEFAULT_SELL_PRICE_OFFSET_PERCENT,
+  DEFAULT_SELL_WARNING_TIME_SEC,
   type IntervalMode,
   MAX_SUCCESSFUL_TRADES,
   SUCCESSFUL_TRADES_LIMIT_MESSAGE,
@@ -260,6 +264,15 @@ export function Popup(): React.ReactElement {
   const [localPointsTarget, setLocalPointsTarget] = useState('15');
   const [stableCoins, setStableCoins] = useState<StabilityItem[]>([]);
   const [stabilityLoading, setStabilityLoading] = useState(false);
+
+  // 订单监控时间配置（秒）
+  const [_buyCancelTimeSec, _setBuyCancelTimeSec] = useState(String(DEFAULT_BUY_CANCEL_TIME_SEC));
+  const [_sellWarningTimeSec, _setSellWarningTimeSec] = useState(
+    String(DEFAULT_SELL_WARNING_TIME_SEC),
+  );
+  const [_sellCancelTimeSec, _setSellCancelTimeSec] = useState(
+    String(DEFAULT_SELL_CANCEL_TIME_SEC),
+  );
   const [airdropToday, setAirdropToday] = useState<ProcessedAirdrop[]>([]);
   const [airdropForecast, setAirdropForecast] = useState<ProcessedAirdrop[]>([]);
   const [airdropLoading, setAirdropLoading] = useState(false);
@@ -271,6 +284,9 @@ export function Popup(): React.ReactElement {
   const isEditingPointsTarget = useRef(false);
   const isEditingBuyPriceOffset = useRef(false);
   const isEditingSellPriceOffset = useRef(false);
+  const isEditingBuyCancelTime = useRef(false);
+  const isEditingSellWarningTime = useRef(false);
+  const isEditingSellCancelTime = useRef(false);
   const settingsUpdateQueueRef = useRef<Promise<void>>(Promise.resolve());
   const orderHistoryRequestState = useRef<{
     tabId: number | null;
@@ -830,6 +846,9 @@ export function Popup(): React.ReactElement {
       pointsFactor?: number;
       pointsTarget?: number;
       intervalMode?: IntervalMode;
+      buyCancelTimeSec?: number;
+      sellWarningTimeSec?: number;
+      sellCancelTimeSec?: number;
     }): Promise<void> => {
       const task = async (): Promise<void> => {
         console.log('[Popup] persistSchedulerSettings - patch:', settingsPatch);
@@ -849,6 +868,9 @@ export function Popup(): React.ReactElement {
               pointsFactor: DEFAULT_POINTS_FACTOR,
               pointsTarget: DEFAULT_POINTS_TARGET,
               intervalMode: DEFAULT_INTERVAL_MODE,
+              buyCancelTimeSec: DEFAULT_BUY_CANCEL_TIME_SEC,
+              sellWarningTimeSec: DEFAULT_SELL_WARNING_TIME_SEC,
+              sellCancelTimeSec: DEFAULT_SELL_CANCEL_TIME_SEC,
             },
             requiresLogin: false,
           };
@@ -866,6 +888,9 @@ export function Popup(): React.ReactElement {
             pointsFactor: DEFAULT_POINTS_FACTOR,
             pointsTarget: DEFAULT_POINTS_TARGET,
             intervalMode: DEFAULT_INTERVAL_MODE,
+            buyCancelTimeSec: DEFAULT_BUY_CANCEL_TIME_SEC,
+            sellWarningTimeSec: DEFAULT_SELL_WARNING_TIME_SEC,
+            sellCancelTimeSec: DEFAULT_SELL_CANCEL_TIME_SEC,
           },
           lastRun: baseState.lastRun,
           lastError: baseState.lastError,
@@ -886,6 +911,9 @@ export function Popup(): React.ReactElement {
           pointsFactor: DEFAULT_POINTS_FACTOR,
           pointsTarget: DEFAULT_POINTS_TARGET,
           intervalMode: DEFAULT_INTERVAL_MODE,
+          buyCancelTimeSec: DEFAULT_BUY_CANCEL_TIME_SEC,
+          sellWarningTimeSec: DEFAULT_SELL_WARNING_TIME_SEC,
+          sellCancelTimeSec: DEFAULT_SELL_CANCEL_TIME_SEC,
           ...(normalizedBaseState.settings ?? {}),
         };
 
@@ -900,6 +928,9 @@ export function Popup(): React.ReactElement {
             pointsFactor: baseSettings.pointsFactor,
             pointsTarget: baseSettings.pointsTarget,
             intervalMode: baseSettings.intervalMode,
+            buyCancelTimeSec: baseSettings.buyCancelTimeSec,
+            sellWarningTimeSec: baseSettings.sellWarningTimeSec,
+            sellCancelTimeSec: baseSettings.sellCancelTimeSec,
             ...settingsPatch,
           },
         };
@@ -1001,12 +1032,27 @@ export function Popup(): React.ReactElement {
     const factor = getPointsFactor(state);
     const target = getPointsTarget(state);
 
+    // 加载时间配置
+    const buyCancelSec = state?.settings?.buyCancelTimeSec ?? DEFAULT_BUY_CANCEL_TIME_SEC;
+    const sellWarningSec = state?.settings?.sellWarningTimeSec ?? DEFAULT_SELL_WARNING_TIME_SEC;
+    const sellCancelSec = state?.settings?.sellCancelTimeSec ?? DEFAULT_SELL_CANCEL_TIME_SEC;
+
     console.log(
       '[Popup] Syncing interval mode from state:',
       interval,
       'full state:',
       state?.settings,
     );
+    console.log('[Popup] Time configs from state:', {
+      buyCancelSec,
+      sellWarningSec,
+      sellCancelSec,
+      fromStorage: {
+        buyCancelTimeSec: state?.settings?.buyCancelTimeSec,
+        sellWarningTimeSec: state?.settings?.sellWarningTimeSec,
+        sellCancelTimeSec: state?.settings?.sellCancelTimeSec,
+      },
+    });
     setPriceOffsetMode(mode);
     setIntervalMode(interval);
 
@@ -1026,6 +1072,20 @@ export function Popup(): React.ReactElement {
 
     if (!isEditingPointsTarget.current) {
       setLocalPointsTarget(String(target));
+    }
+
+    // 加载时间配置到state
+    if (!isEditingBuyCancelTime.current) {
+      console.log('[Popup] Setting buyCancelTimeSec to:', buyCancelSec);
+      _setBuyCancelTimeSec(String(buyCancelSec));
+    }
+    if (!isEditingSellWarningTime.current) {
+      console.log('[Popup] Setting sellWarningTimeSec to:', sellWarningSec);
+      _setSellWarningTimeSec(String(sellWarningSec));
+    }
+    if (!isEditingSellCancelTime.current) {
+      console.log('[Popup] Setting sellCancelTimeSec to:', sellCancelSec);
+      _setSellCancelTimeSec(String(sellCancelSec));
     }
   }, [state, isPointsFactorLocked, sanitizedPointsFactorLockValue]);
 
@@ -2131,6 +2191,149 @@ export function Popup(): React.ReactElement {
               />
             </Col>
           </Row>
+
+          {/* 订单监控时间配置 */}
+          <div style={{ marginTop: 16 }}>
+            <Text
+              type="secondary"
+              style={{ fontSize: 13, fontWeight: 500, display: 'block', marginBottom: 12 }}
+            >
+              订单监控时间配置（秒）
+            </Text>
+            <Row gutter={12}>
+              <Col span={8}>
+                <Space size={6} style={{ marginBottom: 8 }}>
+                  <Text type="secondary" style={{ fontSize: 13, fontWeight: 500 }}>
+                    买入取消时间
+                  </Text>
+                  <Tooltip title="买入限价单超过此时间未成交将自动取消并发出警报">
+                    <InfoCircleOutlined style={{ color: '#1890ff' }} />
+                  </Tooltip>
+                </Space>
+                <InputNumber
+                  min={1}
+                  max={60}
+                  step={1}
+                  placeholder="5"
+                  value={Number.parseFloat(_buyCancelTimeSec)}
+                  onFocus={() => {
+                    isEditingBuyCancelTime.current = true;
+                  }}
+                  onChange={(value) => {
+                    if (value != null) {
+                      _setBuyCancelTimeSec(String(value));
+                    }
+                  }}
+                  onBlur={() => {
+                    isEditingBuyCancelTime.current = false;
+                    const parsed = Number.parseFloat(_buyCancelTimeSec);
+                    const finalValue = Number.isFinite(parsed) && parsed > 0 ? parsed : 5;
+                    _setBuyCancelTimeSec(String(finalValue));
+                    void persistSchedulerSettings({
+                      buyCancelTimeSec: finalValue,
+                    });
+                  }}
+                  onPressEnter={(e) => {
+                    e.preventDefault();
+                    (e.target as HTMLInputElement).blur();
+                  }}
+                  disabled={controlsBusy}
+                  controls={true}
+                  keyboard={true}
+                  stringMode={false}
+                  style={{ width: '100%' }}
+                />
+              </Col>
+
+              <Col span={8}>
+                <Space size={6} style={{ marginBottom: 8 }}>
+                  <Text type="secondary" style={{ fontSize: 13, fontWeight: 500 }}>
+                    卖出警告时间
+                  </Text>
+                  <Tooltip title="卖出限价单超过此时间未成交将发出警告提示">
+                    <InfoCircleOutlined style={{ color: '#1890ff' }} />
+                  </Tooltip>
+                </Space>
+                <InputNumber
+                  min={1}
+                  max={60}
+                  step={1}
+                  placeholder="5"
+                  value={Number.parseFloat(_sellWarningTimeSec)}
+                  onFocus={() => {
+                    isEditingSellWarningTime.current = true;
+                  }}
+                  onChange={(value) => {
+                    if (value != null) {
+                      _setSellWarningTimeSec(String(value));
+                    }
+                  }}
+                  onBlur={() => {
+                    isEditingSellWarningTime.current = false;
+                    const parsed = Number.parseFloat(_sellWarningTimeSec);
+                    const finalValue = Number.isFinite(parsed) && parsed > 0 ? parsed : 5;
+                    _setSellWarningTimeSec(String(finalValue));
+                    void persistSchedulerSettings({
+                      sellWarningTimeSec: finalValue,
+                    });
+                  }}
+                  onPressEnter={(e) => {
+                    e.preventDefault();
+                    (e.target as HTMLInputElement).blur();
+                  }}
+                  disabled={controlsBusy}
+                  controls={true}
+                  keyboard={true}
+                  stringMode={false}
+                  style={{ width: '100%' }}
+                />
+              </Col>
+
+              <Col span={8}>
+                <Space size={6} style={{ marginBottom: 8 }}>
+                  <Text type="secondary" style={{ fontSize: 13, fontWeight: 500 }}>
+                    卖出取消时间
+                  </Text>
+                  <Tooltip title="卖出限价单超过此时间未成交将自动取消并暂停策略">
+                    <InfoCircleOutlined style={{ color: '#1890ff' }} />
+                  </Tooltip>
+                </Space>
+                <InputNumber
+                  min={1}
+                  max={60}
+                  step={1}
+                  placeholder="10"
+                  value={Number.parseFloat(_sellCancelTimeSec)}
+                  onFocus={() => {
+                    isEditingSellCancelTime.current = true;
+                  }}
+                  onChange={(value) => {
+                    if (value != null) {
+                      _setSellCancelTimeSec(String(value));
+                    }
+                  }}
+                  onBlur={() => {
+                    isEditingSellCancelTime.current = false;
+                    const parsed = Number.parseFloat(_sellCancelTimeSec);
+                    const finalValue = Number.isFinite(parsed) && parsed > 0 ? parsed : 10;
+                    _setSellCancelTimeSec(String(finalValue));
+                    void persistSchedulerSettings({
+                      sellCancelTimeSec: finalValue,
+                    });
+                  }}
+                  onPressEnter={(e) => {
+                    e.preventDefault();
+                    (e.target as HTMLInputElement).blur();
+                  }}
+                  disabled={controlsBusy}
+                  controls={true}
+                  keyboard={true}
+                  stringMode={false}
+                  style={{ width: '100%' }}
+                />
+              </Col>
+            </Row>
+          </div>
         </Space>
       </Card>
 

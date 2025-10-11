@@ -1,11 +1,14 @@
 import {
   DEFAULT_AUTOMATION,
+  DEFAULT_BUY_CANCEL_TIME_SEC,
   DEFAULT_BUY_PRICE_OFFSET_PERCENT,
   DEFAULT_INTERVAL_MODE,
   DEFAULT_POINTS_FACTOR,
   DEFAULT_POINTS_TARGET,
   DEFAULT_PRICE_OFFSET_PERCENT,
+  DEFAULT_SELL_CANCEL_TIME_SEC,
   DEFAULT_SELL_PRICE_OFFSET_PERCENT,
+  DEFAULT_SELL_WARNING_TIME_SEC,
   type IntervalMode,
 } from '../config/defaults.js';
 import { HISTORY_DATA_STORAGE_KEY, STORAGE_KEY } from '../config/storageKey.js';
@@ -34,6 +37,9 @@ export interface SchedulerSettings {
   pointsFactor: number;
   pointsTarget: number;
   intervalMode: IntervalMode;
+  buyCancelTimeSec?: number;
+  sellWarningTimeSec?: number;
+  sellCancelTimeSec?: number;
 }
 
 export interface SchedulerState {
@@ -66,6 +72,9 @@ const DEFAULT_SETTINGS: SchedulerSettings = {
   pointsFactor: DEFAULT_POINTS_FACTOR,
   pointsTarget: DEFAULT_POINTS_TARGET,
   intervalMode: DEFAULT_INTERVAL_MODE,
+  buyCancelTimeSec: DEFAULT_BUY_CANCEL_TIME_SEC,
+  sellWarningTimeSec: DEFAULT_SELL_WARNING_TIME_SEC,
+  sellCancelTimeSec: DEFAULT_SELL_CANCEL_TIME_SEC,
 };
 
 const MIN_PRICE_OFFSET_PERCENT = -5;
@@ -120,6 +129,10 @@ export async function getSchedulerState(): Promise<SchedulerState> {
         intervalMode: normalizeIntervalMode(
           storedSettings.intervalMode ?? DEFAULT_SETTINGS.intervalMode,
         ),
+        buyCancelTimeSec: storedSettings.buyCancelTimeSec ?? DEFAULT_SETTINGS.buyCancelTimeSec,
+        sellWarningTimeSec:
+          storedSettings.sellWarningTimeSec ?? DEFAULT_SETTINGS.sellWarningTimeSec,
+        sellCancelTimeSec: storedSettings.sellCancelTimeSec ?? DEFAULT_SETTINGS.sellCancelTimeSec,
       };
 
       resolve({

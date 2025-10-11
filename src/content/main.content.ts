@@ -34,8 +34,12 @@ import {
 const ORDER_PLACEMENT_COOLDOWN_MS = 5_000;
 const LIMIT_STATE_TIMEOUT_MS = 2_000;
 const LIMIT_STATE_POLL_INTERVAL_MS = 100;
-const PENDING_ORDER_WARNING_DELAY_MS = 5_000; // 5秒普通警告（买入+卖出）
-const PENDING_SELL_ORDER_ALERT_DELAY_MS = 10_000; // 卖出单10秒紧急警报
+
+// 默认时间配置（毫秒）
+const DEFAULT_BUY_CANCEL_TIME_MS = 5_000; // 买入限价单自动取消时间：默认 5 秒
+const DEFAULT_SELL_WARNING_TIME_MS = 5_000; // 卖出限价单警告时间：默认 5 秒
+const DEFAULT_SELL_CANCEL_TIME_MS = 10_000; // 卖出限价单自动取消时间：默认 10 秒
+
 const PENDING_ORDER_CHECK_INTERVAL_MS = 1_000;
 const PENDING_ORDER_WARNING_ELEMENT_ID = 'dddd-alpha-pending-order-warning';
 const URGENT_SELL_ALERT_ELEMENT_ID = 'dddd-alpha-urgent-sell-alert';
@@ -361,6 +365,11 @@ let automationLoopActive = false;
 let pendingBuyOrderMonitorId: number | undefined;
 let monitoringEnabled = false;
 
+// 可配置的订单监控时间（毫秒）
+let buyCancelTimeMs = DEFAULT_BUY_CANCEL_TIME_MS;
+let sellWarningTimeMs = DEFAULT_SELL_WARNING_TIME_MS;
+let sellCancelTimeMs = DEFAULT_SELL_CANCEL_TIME_MS;
+
 const MULTIPLIER_CACHE_DURATION_MS = 5 * 60_000;
 
 interface TokenDirectoryRecord {
@@ -377,6 +386,7 @@ let cachedAlphaMultiplierTimestamp = 0;
 const pendingOrderTimestamps = new Map<string, number>();
 const pending5SecWarningsShown = new Set<string>(); // 5秒普通警告已显示的订单
 const pending10SecWarningsShown = new Set<string>(); // 10秒紧急警告已显示的订单
+const pendingOrdersCancelled = new Set<string>(); // 已自动取消的订单
 
 chrome.runtime.onMessage.addListener((message: RuntimeMessage, _sender, sendResponse) => {
   // eslint-disable-next-line no-console
@@ -496,8 +506,11 @@ chrome.runtime.onMessage.addListener((message: RuntimeMessage, _sender, sendResp
 
 initializeAutomationStateWatcher();
 void sendInitialBalanceUpdate();
-// 不要立即启动监控，等待下单后再启动
-// startPendingOrderMonitor();
+if (!monitoringEnabled) {
+  monitoringEnabled = true;
+  startPendingOrderMonitor();
+  console.log('[dddd-alpha-extension] Pending order monitor activated on script init');
+}
 
 async function sendInitialBalanceUpdate(): Promise<void> {
   // 延迟5秒,确保页面有足够时间加载余额
@@ -1264,6 +1277,162 @@ function getOpenOrdersRoot(): HTMLElement | null {
   return node instanceof HTMLElement ? node : null;
 }
 
+/**
+ * 尝试触发元素点击（兼容 SVG 元素）
+ */
+function triggerElementClick(element: Element | null): boolean {
+  if (!element) {
+    return false;
+  }
+
+  if (!element.isConnected) {
+    console.warn('[dddd-alpha-extension] 取消按钮节点已从 DOM 中移除，放弃点击');
+    return false;
+  }
+
+  if (element instanceof HTMLElement) {
+    element.click();
+    return true;
+  }
+
+  if (element instanceof SVGElement) {
+    const simulatedClick = new MouseEvent('click', {
+      bubbles: true,
+      cancelable: true,
+      view: window,
+    });
+    const dispatched = element.dispatchEvent(simulatedClick);
+    if (!dispatched) {
+      console.warn('[dddd-alpha-extension] SVG 取消按钮 click 事件被阻止');
+    }
+    return dispatched;
+  }
+
+  console.warn('[dddd-alpha-extension] 未识别的取消按钮节点类型', element);
+  return false;
+}
+
+/**
+ * 查找订单行中的取消按钮并点击
+ */
+function cancelLimitOrder(orderRow: HTMLElement): boolean {
+  try {
+    const validateCandidate = (node: Element | null): Element | null => {
+      if (!node) return null;
+
+      const rowCandidate = node.closest<HTMLElement>('tr,[data-row-index],[role="row"]');
+      if (!rowCandidate) {
+        return null;
+      }
+
+      if (
+        rowCandidate === orderRow ||
+        rowCandidate.contains(orderRow) ||
+        orderRow.contains(rowCandidate)
+      ) {
+        return node;
+      }
+
+      return null;
+    };
+
+    const globalSelectors = [
+      '#bn-tab-pane-orderOrder > div > div.bn-web-table-wrapper.bn-web-table-wrapper__filled.bn-web-table-wrapper__row-small.bn-web-table-wrapper__padding-default > div > div > div.bn-web-table-body > table > tbody > tr.bn-web-table-row.bn-web-table-row-level-0 > td:nth-child(9) > svg > path',
+    ];
+
+    for (const selector of globalSelectors) {
+      const matches = document.querySelectorAll(selector);
+      if (matches.length > 0) {
+        console.log(
+          `[dddd-alpha-extension] 全局选择器(${selector})匹配到 ${matches.length} 个节点，尝试寻找当前订单`,
+        );
+      }
+
+      for (const node of Array.from(matches)) {
+        if (!(node instanceof Element)) {
+          continue;
+        }
+
+        const validated = validateCandidate(node);
+        if (!validated) {
+          continue;
+        }
+
+        const explicitButton = validated.closest('button, [role="button"]');
+        if (triggerElementClick(explicitButton)) {
+          console.log('[dddd-alpha-extension] 已通过全局选择器找到取消按钮并点击');
+          return true;
+        }
+
+        if (triggerElementClick(validated)) {
+          console.log('[dddd-alpha-extension] 已通过全局选择器直接点击取消按钮');
+          return true;
+        }
+      }
+    }
+
+    // 尝试多种选择器来查找取消按钮
+    const cancelButtonSelectors = [
+      'button[aria-label*="Cancel"]', // 带Cancel的按钮
+      'button[aria-label*="取消"]', // 带取消的按钮
+      'svg[data-bn-type="icon"]', // SVG图标
+      'svg path', // SVG path 元素
+      'svg', // 最后尝试所有SVG
+      '[role="button"]',
+    ];
+
+    for (const selector of cancelButtonSelectors) {
+      const elements = orderRow.querySelectorAll(selector);
+      if (elements.length > 0) {
+        console.log(
+          `[dddd-alpha-extension] 订单行选择器(${selector})匹配到 ${elements.length} 个节点`,
+        );
+      }
+
+      // 通常取消按钮在最后一列,所以从后往前查找
+      for (let i = elements.length - 1; i >= 0; i--) {
+        const node = elements[i];
+        if (!(node instanceof Element)) {
+          continue;
+        }
+
+        const explicitButton = node.closest('button, [role="button"]');
+        if (triggerElementClick(explicitButton)) {
+          console.log('[dddd-alpha-extension] 已通过显式按钮取消订单');
+          return true;
+        }
+
+        // 尝试点击当前节点
+        if (triggerElementClick(node)) {
+          console.log('[dddd-alpha-extension] 已点击取消按钮');
+          return true;
+        }
+      }
+    }
+
+    // 如果上面的方法都没找到,尝试找最后一个td中的可点击元素
+    const cells = orderRow.querySelectorAll('td');
+    if (cells.length > 0) {
+      const lastCell = cells[cells.length - 1];
+      // 在最后一列中查找所有可点击的元素
+      const clickables = lastCell.querySelectorAll('svg, button, [role="button"], svg path');
+      if (clickables.length > 0) {
+        const lastClickable = clickables[clickables.length - 1];
+        if (lastClickable instanceof Element && triggerElementClick(lastClickable)) {
+          console.log('[dddd-alpha-extension] 已点击最后一列的按钮');
+          return true;
+        }
+      }
+    }
+
+    console.warn('[dddd-alpha-extension] 未找到取消按钮');
+    return false;
+  } catch (error) {
+    console.error('[dddd-alpha-extension] 取消订单时出错:', error);
+    return false;
+  }
+}
+
 function startPendingOrderMonitor(): void {
   if (pendingBuyOrderMonitorId !== undefined) {
     return;
@@ -1291,11 +1460,13 @@ function checkPendingLimitOrders(): void {
     if (
       pendingOrderTimestamps.size > 0 ||
       pending5SecWarningsShown.size > 0 ||
-      pending10SecWarningsShown.size > 0
+      pending10SecWarningsShown.size > 0 ||
+      pendingOrdersCancelled.size > 0
     ) {
       pendingOrderTimestamps.clear();
       pending5SecWarningsShown.clear();
       pending10SecWarningsShown.clear();
+      pendingOrdersCancelled.clear();
     }
     return;
   }
@@ -1318,6 +1489,7 @@ function checkPendingLimitOrders(): void {
       pendingOrderTimestamps.delete(key);
       pending5SecWarningsShown.delete(key);
       pending10SecWarningsShown.delete(key);
+      pendingOrdersCancelled.delete(key);
     }
   }
 
@@ -1326,39 +1498,96 @@ function checkPendingLimitOrders(): void {
     if (!order) continue;
 
     const elapsed = now - startedAt;
+    const buyCancelDue = order.side === 'buy' && elapsed >= buyCancelTimeMs;
+    const sellWarningDue = order.side === 'sell' && elapsed >= sellWarningTimeMs;
+    const sellCancelDue = order.side === 'sell' && elapsed >= sellCancelTimeMs;
 
-    // 5秒警告：买入单和卖出单都显示
-    if (elapsed >= PENDING_ORDER_WARNING_DELAY_MS && !pending5SecWarningsShown.has(key)) {
-      console.warn(
-        `[dddd-alpha-extension] ⚠️ 5秒警告：${order.side === 'buy' ? '买入' : '卖出'}限价单未成交 - ${order.key}`,
-      );
-
-      // 显示普通警告
-      showPendingOrderWarning(order.side);
-      pending5SecWarningsShown.add(key);
+    if (!pendingOrdersCancelled.has(key) && (buyCancelDue || sellCancelDue)) {
+      const cancelled = cancelLimitOrder(order.row);
+      if (cancelled) {
+        pendingOrdersCancelled.add(key);
+        if (buyCancelDue) {
+          const seconds = Math.round(buyCancelTimeMs / 1000);
+          console.warn(
+            `[dddd-alpha-extension] ✅ 买入限价单超过 ${seconds} 秒未成交，已自动取消: ${order.key}`,
+          );
+          // 买入限价单取消成功后，显示警报通知
+          if (!pending5SecWarningsShown.has(key)) {
+            showPendingOrderWarning(order.side, seconds);
+            pending5SecWarningsShown.add(key);
+          }
+        } else {
+          const seconds = Math.round(sellCancelTimeMs / 1000);
+          console.error(
+            `[dddd-alpha-extension] 🚨 卖出限价单超过 ${seconds} 秒未成交，已自动取消: ${order.key}`,
+          );
+        }
+      } else {
+        if (buyCancelDue) {
+          console.warn(
+            `[dddd-alpha-extension] ⚠️ 尝试自动取消买入限价单失败，请手动检查: ${order.key}`,
+          );
+        } else {
+          const seconds = Math.round(sellCancelTimeMs / 1000);
+          console.error(
+            `[dddd-alpha-extension] 🚨 紧急情况：卖出限价单超过 ${seconds} 秒未成交，自动取消失败 - ${order.key}`,
+          );
+        }
+      }
     }
 
-    // 10秒紧急警告：仅卖出单
-    if (
-      order.side === 'sell' &&
-      elapsed >= PENDING_SELL_ORDER_ALERT_DELAY_MS &&
-      !pending10SecWarningsShown.has(key)
-    ) {
-      console.error('[dddd-alpha-extension] 🚨 紧急情况：卖出限价单10秒未成交，自动暂停策略！');
+    if (buyCancelDue) {
+      if (pendingOrdersCancelled.has(key)) {
+        pendingOrderTimestamps.delete(key);
+        pending5SecWarningsShown.delete(key);
+        pending10SecWarningsShown.delete(key);
+        pendingOrdersCancelled.delete(key);
+        continue;
+      }
 
-      // 暂停自动化策略
-      automationEnabled = false;
-      teardownPolling(); // 立即停止自动化循环
+      if (!pending5SecWarningsShown.has(key)) {
+        const seconds = Math.round(buyCancelTimeMs / 1000);
+        console.warn(
+          `[dddd-alpha-extension] ⚠️ ${seconds}秒警告：买入限价单未成交 - ${order.key}，请确认是否需手动处理`,
+        );
+        showPendingOrderWarning(order.side, seconds);
+        pending5SecWarningsShown.add(key);
+      }
 
-      // 通知后台停止调度，确保策略状态同步
-      void postRuntimeMessage({ type: 'CONTROL_STOP' }).catch((error: unknown) => {
-        // eslint-disable-next-line no-console
-        console.warn('[dddd-alpha-extension] Failed to dispatch CONTROL_STOP:', error);
-      });
+      continue;
+    }
 
-      // 显示紧急警告
-      showUrgentSellAlert();
-      pending10SecWarningsShown.add(key);
+    if (sellCancelDue) {
+      if (!pending10SecWarningsShown.has(key)) {
+        const seconds = Math.round(sellCancelTimeMs / 1000);
+        console.error(
+          `[dddd-alpha-extension] 🚨 紧急情况：卖出限价单${seconds}秒未成交，自动暂停策略！`,
+        );
+
+        automationEnabled = false;
+        teardownPolling();
+
+        void postRuntimeMessage({ type: 'CONTROL_STOP' }).catch((error: unknown) => {
+          // eslint-disable-next-line no-console
+          console.warn('[dddd-alpha-extension] Failed to dispatch CONTROL_STOP:', error);
+        });
+
+        showUrgentSellAlert(seconds);
+        pending10SecWarningsShown.add(key);
+      }
+
+      pendingOrderTimestamps.delete(key);
+      pending5SecWarningsShown.delete(key);
+      pending10SecWarningsShown.delete(key);
+      pendingOrdersCancelled.delete(key);
+      continue;
+    }
+
+    if (sellWarningDue && !pending5SecWarningsShown.has(key)) {
+      const seconds = Math.round(sellWarningTimeMs / 1000);
+      console.warn(`[dddd-alpha-extension] ⚠️ ${seconds}秒警告：卖出限价单未成交 - ${order.key}`);
+      showPendingOrderWarning(order.side, seconds);
+      pending5SecWarningsShown.add(key);
     }
   }
 }
@@ -1366,6 +1595,7 @@ function checkPendingLimitOrders(): void {
 interface OrderInfo {
   key: string;
   side: 'buy' | 'sell';
+  row: HTMLElement;
 }
 
 function extractOpenLimitOrderKeys(root: HTMLElement): OrderInfo[] {
@@ -1404,7 +1634,7 @@ function extractOpenLimitOrderKeys(root: HTMLElement): OrderInfo[] {
       continue;
     }
 
-    orders.push({ key: signature, side: orderSide });
+    orders.push({ key: signature, side: orderSide, row });
   }
 
   return orders;
@@ -1512,7 +1742,7 @@ function playNormalWarningSound(): void {
 /**
  * 显示普通挂单警告 - 右上角黄色提示
  */
-function showPendingOrderWarning(side: 'buy' | 'sell'): void {
+function showPendingOrderWarning(side: 'buy' | 'sell', timeSeconds: number): void {
   const body = document.body;
   if (!body) {
     return;
@@ -1553,7 +1783,7 @@ function showPendingOrderWarning(side: 'buy' | 'sell'): void {
   // 标题
   const title = document.createElement('div');
   const sideText = side === 'buy' ? '买入' : '卖出';
-  title.textContent = `${sideText}限价单超过 5 秒未成交`;
+  title.textContent = `${sideText}限价单超过 ${timeSeconds} 秒未成交`;
   title.style.fontSize = '18px';
   title.style.fontWeight = '600';
   title.style.marginBottom = '8px';
@@ -1658,7 +1888,7 @@ function playUrgentAlertSound(): void {
 /**
  * 显示紧急卖出警告 - 策略已暂停
  */
-function showUrgentSellAlert(): void {
+function showUrgentSellAlert(timeSeconds: number): void {
   const body = document.body;
   if (!body) {
     return;
@@ -1726,7 +1956,7 @@ function showUrgentSellAlert(): void {
 
   // 描述
   const description = document.createElement('div');
-  description.textContent = '卖出限价单超过 10 秒仍未成交！';
+  description.textContent = `卖出限价单超过 ${timeSeconds} 秒仍未成交！`;
   description.style.fontSize = '18px';
   description.style.lineHeight = '1.6';
   description.style.marginBottom = '12px';
@@ -1944,6 +2174,9 @@ function applyAutomationState(value: unknown): void {
   let nextPointsFactor = DEFAULT_POINTS_FACTOR;
   let nextPointsTarget = DEFAULT_POINTS_TARGET;
   let nextIntervalMode: IntervalMode = DEFAULT_INTERVAL_MODE;
+  let nextBuyCancelTimeMs = DEFAULT_BUY_CANCEL_TIME_MS;
+  let nextSellWarningTimeMs = DEFAULT_SELL_WARNING_TIME_MS;
+  let nextSellCancelTimeMs = DEFAULT_SELL_CANCEL_TIME_MS;
 
   if (value && typeof value === 'object') {
     const record = value as { isEnabled?: unknown; settings?: unknown };
@@ -1972,6 +2205,25 @@ function applyAutomationState(value: unknown): void {
       const targetCandidate = (record.settings as { pointsTarget?: unknown }).pointsTarget;
       nextPointsTarget = extractPointsTarget(targetCandidate);
 
+      // 读取时间配置（秒 -> 毫秒）
+      const buyCancelSecCandidate = (record.settings as { buyCancelTimeSec?: unknown })
+        .buyCancelTimeSec;
+      if (typeof buyCancelSecCandidate === 'number' && buyCancelSecCandidate > 0) {
+        nextBuyCancelTimeMs = buyCancelSecCandidate * 1000;
+      }
+
+      const sellWarningSecCandidate = (record.settings as { sellWarningTimeSec?: unknown })
+        .sellWarningTimeSec;
+      if (typeof sellWarningSecCandidate === 'number' && sellWarningSecCandidate > 0) {
+        nextSellWarningTimeMs = sellWarningSecCandidate * 1000;
+      }
+
+      const sellCancelSecCandidate = (record.settings as { sellCancelTimeSec?: unknown })
+        .sellCancelTimeSec;
+      if (typeof sellCancelSecCandidate === 'number' && sellCancelSecCandidate > 0) {
+        nextSellCancelTimeMs = sellCancelSecCandidate * 1000;
+      }
+
       const intervalCandidate = (record.settings as { intervalMode?: unknown }).intervalMode;
       nextIntervalMode = extractIntervalMode(intervalCandidate);
     }
@@ -1984,7 +2236,10 @@ function applyAutomationState(value: unknown): void {
     sellPriceOffset !== nextSellPriceOffset ||
     pointsFactor !== nextPointsFactor ||
     pointsTarget !== nextPointsTarget ||
-    intervalMode !== nextIntervalMode;
+    intervalMode !== nextIntervalMode ||
+    buyCancelTimeMs !== nextBuyCancelTimeMs ||
+    sellWarningTimeMs !== nextSellWarningTimeMs ||
+    sellCancelTimeMs !== nextSellCancelTimeMs;
 
   if (stateChanged) {
     // eslint-disable-next-line no-console
@@ -1996,9 +2251,13 @@ function applyAutomationState(value: unknown): void {
       pointsFactor: nextPointsFactor,
       pointsTarget: nextPointsTarget,
       intervalMode: nextIntervalMode,
+      buyCancelTimeSec: nextBuyCancelTimeMs / 1000,
+      sellWarningTimeSec: nextSellWarningTimeMs / 1000,
+      sellCancelTimeSec: nextSellCancelTimeMs / 1000,
     });
   }
 
+  const wasDisabled = !automationEnabled;
   automationEnabled = nextEnabled;
   priceOffsetPercent = nextPriceOffset;
   buyPriceOffset = nextBuyPriceOffset;
@@ -2006,9 +2265,93 @@ function applyAutomationState(value: unknown): void {
   pointsFactor = nextPointsFactor;
   pointsTarget = nextPointsTarget;
   intervalMode = nextIntervalMode;
+  buyCancelTimeMs = nextBuyCancelTimeMs;
+  sellWarningTimeMs = nextSellWarningTimeMs;
+  sellCancelTimeMs = nextSellCancelTimeMs;
 
   if (!automationEnabled) {
     teardownPolling();
+  } else if (wasDisabled && automationEnabled) {
+    // 策略从禁用变为启用时，自动切换到买入限价单模式
+    // eslint-disable-next-line no-console
+    console.log('[dddd-alpha-extension] 策略已启动，准备切换到买入限价单模式...');
+
+    // 添加延迟和重试机制，确保 DOM 已准备好
+    const attemptSwitch = async (retries = 3): Promise<void> => {
+      for (let i = 0; i < retries; i++) {
+        try {
+          // eslint-disable-next-line no-console
+          console.log(`[dddd-alpha-extension] 尝试切换到限价单模式 (第 ${i + 1}/${retries} 次)...`);
+
+          // 等待一段时间让 DOM 加载完成
+          await new Promise((resolve) => setTimeout(resolve, 500 * (i + 1)));
+
+          // 直接调用 ensureLimitOrderMode，不需要 orderPanel 参数
+          await ensureLimitOrderMode(document.body);
+
+          // eslint-disable-next-line no-console
+          console.log('[dddd-alpha-extension] ✅ 成功切换到买入限价单模式');
+
+          // 切换成功后，等待 DOM 完全渲染后再启动自动化策略
+          // eslint-disable-next-line no-console
+          console.log('[dddd-alpha-extension] ⏳ 等待 DOM 稳定...');
+          await new Promise((resolve) => setTimeout(resolve, 2000));
+
+          // 验证 trading form panel 是否已准备好（带重试机制）
+          // eslint-disable-next-line no-console
+          console.log('[dddd-alpha-extension] 🔍 验证 trading form panel...');
+          let verifyPanel: HTMLElement | null = null;
+          let verifyAttempts = 0;
+          const maxVerifyAttempts = 5;
+
+          while (!verifyPanel && verifyAttempts < maxVerifyAttempts) {
+            verifyAttempts++;
+            verifyPanel = getTradingFormPanel();
+
+            if (!verifyPanel) {
+              // eslint-disable-next-line no-console
+              console.log(
+                `[dddd-alpha-extension] ⏳ Trading form panel 未找到 (第 ${verifyAttempts}/${maxVerifyAttempts} 次)，等待 500ms 后重试...`,
+              );
+              await new Promise((resolve) => setTimeout(resolve, 500));
+            } else {
+              // eslint-disable-next-line no-console
+              console.log('[dddd-alpha-extension] ✅ Trading form panel 已找到！');
+            }
+          }
+
+          if (!verifyPanel) {
+            // eslint-disable-next-line no-console
+            console.error(
+              '[dddd-alpha-extension] ❌ Trading form panel 未准备好（尝试 5 次后仍未找到）',
+            );
+            throw new Error('Trading form panel not ready after 5 attempts');
+          }
+
+          // 启动自动化策略
+          // eslint-disable-next-line no-console
+          console.log('[dddd-alpha-extension] 🚀 正在启动自动化策略...');
+          await handleAutomation();
+
+          // eslint-disable-next-line no-console
+          console.log('[dddd-alpha-extension] ✅ 自动化策略已成功启动！');
+
+          return;
+        } catch (error: unknown) {
+          const messageText = error instanceof Error ? error.message : String(error);
+          console.warn(`[dddd-alpha-extension] 第 ${i + 1} 次切换失败:`, messageText);
+          if (i === retries - 1) {
+            console.error('[dddd-alpha-extension] ❌ 所有切换尝试均失败，请手动切换到买入限价单');
+          }
+          // 继续下一次重试
+        }
+      }
+    };
+
+    void attemptSwitch().catch((error: unknown) => {
+      const messageText = error instanceof Error ? error.message : String(error);
+      console.error('[dddd-alpha-extension] 切换到限价单模式时发生未预期错误:', messageText);
+    });
   }
 }
 
@@ -2223,41 +2566,122 @@ async function configureLimitOrder(params: {
   return availableUsdt;
 }
 
-async function ensureLimitOrderMode(orderPanel: HTMLElement): Promise<void> {
-  const buyTab = findOrderPanelTab(orderPanel, '#bn-tab-0.bn-tab__buySell');
-  if (!buyTab) {
+async function ensureLimitOrderMode(_orderPanel: HTMLElement): Promise<void> {
+  // 第一步：检查是否已经在买入+限价模式
+  const buyTab = document.querySelector<HTMLElement>('#bn-tab-0');
+  const limitTab = document.querySelector<HTMLElement>('#bn-tab-LIMIT');
+
+  if (!buyTab || !limitTab) {
     // eslint-disable-next-line no-console
-    console.error('[dddd-alpah-extension] Buy tab not found');
-    throw new Error('Buy tab not found.');
+    console.error('[dddd-alpah-extension] ❌ 标签未找到:', {
+      buyTab: !!buyTab,
+      limitTab: !!limitTab,
+    });
+    throw new Error('Buy or Limit tab not found.');
   }
 
-  if (buyTab.getAttribute('aria-selected') !== 'true') {
+  const isBuySelected = buyTab.getAttribute('aria-selected') === 'true';
+  const isLimitSelected = limitTab.getAttribute('aria-selected') === 'true';
+
+  // 如果已经在正确模式，直接返回
+  if (isBuySelected && isLimitSelected) {
     // eslint-disable-next-line no-console
-    console.log('[dddd-alpah-extension] Selecting buy tab');
+    console.log('[dddd-alpah-extension] ℹ️ 已经在买入+限价单模式，无需切换');
+    return;
+  }
+
+  // eslint-disable-next-line no-console
+  console.log('[dddd-alpah-extension] 🔄 开始切换到买入+限价单模式...');
+  // eslint-disable-next-line no-console
+  console.log('[dddd-alpah-extension] 当前状态:', {
+    buySelected: isBuySelected,
+    limitSelected: isLimitSelected,
+  });
+
+  // 第二步：切换到买入模式（如果需要）
+  if (!isBuySelected) {
+    // eslint-disable-next-line no-console
+    console.log('[dddd-alpah-extension] 📌 点击买入标签...');
     buyTab.click();
+
+    // 等待 DOM 更新
     await waitForAnimationFrame();
-    await waitRandomDelay(200, 400);
+    await new Promise((resolve) => setTimeout(resolve, 800));
+
+    // 验证买入标签是否已选中
+    const buyTabAfter = document.querySelector<HTMLElement>('#bn-tab-0');
+    const buySuccess = buyTabAfter?.getAttribute('aria-selected') === 'true';
+    // eslint-disable-next-line no-console
+    console.log('[dddd-alpah-extension] 买入标签点击后:', {
+      ariaSelected: buyTabAfter?.getAttribute('aria-selected'),
+      success: buySuccess,
+    });
+
+    if (!buySuccess) {
+      throw new Error('Failed to switch to buy tab');
+    }
+
+    // 等待一小段时间后再继续
+    await new Promise((resolve) => setTimeout(resolve, 300));
   }
 
-  const limitTab =
-    findOrderPanelTab(orderPanel, '#bn-tab-limit') ??
-    findOrderPanelTab(orderPanel, '#bn-tab-LIMIT');
-  if (!limitTab) {
+  // 第三步：切换到限价模式（如果需要）
+  // 重新查找 limitTab（因为 DOM 可能已更新）
+  const limitTabNow = document.querySelector<HTMLElement>('#bn-tab-LIMIT');
+  if (!limitTabNow) {
     // eslint-disable-next-line no-console
-    console.error('[dddd-alpah-extension] Limit tab not found');
+    console.error('[dddd-alpah-extension] ❌ Limit tab (#bn-tab-LIMIT) not found');
     throw new Error('Limit tab not found.');
   }
 
-  if (limitTab.getAttribute('aria-selected') !== 'true') {
+  const isLimitSelectedNow = limitTabNow.getAttribute('aria-selected') === 'true';
+  if (!isLimitSelectedNow) {
     // eslint-disable-next-line no-console
-    console.log('[dddd-alpah-extension] Selecting limit tab');
-    limitTab.click();
+    console.log('[dddd-alpah-extension] 📌 点击限价标签...');
+    limitTabNow.click();
+
+    // 等待 DOM 更新
     await waitForAnimationFrame();
-    await waitRandomDelay(200, 400);
+    await new Promise((resolve) => setTimeout(resolve, 800));
+
+    // 验证限价标签是否已选中
+    const limitTabAfter = document.querySelector<HTMLElement>('#bn-tab-LIMIT');
+    const limitSuccess = limitTabAfter?.getAttribute('aria-selected') === 'true';
+    // eslint-disable-next-line no-console
+    console.log('[dddd-alpah-extension] 限价标签点击后:', {
+      ariaSelected: limitTabAfter?.getAttribute('aria-selected'),
+      success: limitSuccess,
+    });
+
+    if (!limitSuccess) {
+      throw new Error('Failed to switch to limit tab');
+    }
   }
+
+  // 最终验证
+  const finalBuyTab = document.querySelector<HTMLElement>('#bn-tab-0');
+  const finalLimitTab = document.querySelector<HTMLElement>('#bn-tab-LIMIT');
+  const finalBuySelected = finalBuyTab?.getAttribute('aria-selected') === 'true';
+  const finalLimitSelected = finalLimitTab?.getAttribute('aria-selected') === 'true';
+
+  // eslint-disable-next-line no-console
+  console.log('[dddd-alpah-extension] 最终状态验证:', {
+    buySelected: finalBuySelected,
+    limitSelected: finalLimitSelected,
+    success: finalBuySelected && finalLimitSelected,
+  });
+
+  if (!finalBuySelected || !finalLimitSelected) {
+    throw new Error(
+      `Failed to switch to BUY+LIMIT mode (buy: ${finalBuySelected}, limit: ${finalLimitSelected})`,
+    );
+  }
+
+  // eslint-disable-next-line no-console
+  console.log('[dddd-alpah-extension] ✅ 成功切换到买入+限价单模式！');
 }
 
-function findOrderPanelTab(orderPanel: HTMLElement, selector: string): HTMLElement | null {
+function _findOrderPanelTab(orderPanel: HTMLElement, selector: string): HTMLElement | null {
   const scoped = orderPanel.querySelector<HTMLElement>(selector);
   if (scoped) {
     return scoped;

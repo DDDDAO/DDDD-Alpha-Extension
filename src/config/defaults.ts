@@ -24,6 +24,11 @@ export const FAST_MODE_MAX_DELAY = 3_000;
 export const MEDIUM_MODE_MIN_DELAY = 5_000;
 export const MEDIUM_MODE_MAX_DELAY = 10_000;
 
+// 订单监控时间配置（秒）
+export const DEFAULT_BUY_CANCEL_TIME_SEC = 5; // 买入限价单自动取消时间：默认 5 秒
+export const DEFAULT_SELL_WARNING_TIME_SEC = 5; // 卖出限价单警告时间：默认 5 秒
+export const DEFAULT_SELL_CANCEL_TIME_SEC = 10; // 卖出限价单自动取消时间：默认 10 秒
+
 export function resolveTargetUrl(tokenAddress?: string): string {
   const normalizedAddress = tokenAddress?.trim() || DEFAULT_TOKEN_ADDRESS;
   return `${BINANCE_ALPHA_BASE_URL}${encodeURIComponent(normalizedAddress)}`;

@@ -16,7 +16,7 @@ YB-TGE教程：币安又发打新福利了，预计打满3BNB获益200-400U，�
 #### 方法一：通过 Venus 借 BNB
 - 先存入抵押物USDT（约需6000 USDT），然后借出BNB
 - 注意抵押率不要超过60%
-  ![Venus](/Users/zhangxuanyang/Desktop/Quant/DDDD-Alpha-Extension/fig/Venus.jpg)
+  ![Venus](fig/Venus.jpg)
 
 #### 方法二：向朋友借 3 BNB
 - 如果自己没有U，可以找信任的朋友合作，借3个BNB

@@ -20,9 +20,16 @@
 - ✅ **历史记录**：查看每日交易历史和磨损统计日历
 - ✅ **空投提醒**：显示今日和即将到来的空投活动
 
-## 📦 快速安装（5分钟搞定）
+## 📦 快速安装（1分钟搞定）
 
-### 方法一：下载现成版本（推荐新手）
+### 方法一：Chrome 应用商店安装（推荐）
+
+1. **直接安装**
+   - 点击访问 [Chrome 应用商店](https://chromewebstore.google.com/detail/dddd-alpha-extension/bpkpgegpbcbeflbgicjhdflhfmikgjpc)
+   - 点击「添加至 Chrome」按钮
+   - 完成！插件图标会出现在浏览器右上角
+
+### 方法二：下载压缩包安装
 
 1. **下载插件包**
    - 点击 [这里下载插件](https://github.com/DDDDAO/dddd-alpha-extension/releases/download/nightly/dddd-alpha-extension.zip)
@@ -36,7 +43,7 @@
    - 选择刚才解压的文件夹
    - 完成！插件图标会出现在浏览器右上角
 
-### 方法二：从源码安装（适合进阶用户）
+### 方法三：从源码安装（适合进阶用户）
 
 ```bash
 # 下载代码
@@ -212,9 +219,16 @@ A Chrome extension that helps you **automatically trade tokens to earn Alpha poi
 - ✅ **History Records**: View daily trading history and cost statistics calendar
 - ✅ **Airdrop Alerts**: Shows today's and upcoming airdrops
 
-## 📦 Quick Installation (5 minutes)
+## 📦 Quick Installation (1 minute)
 
-### Option 1: Download Pre-built Version (Recommended)
+### Option 1: Chrome Web Store (Recommended)
+
+1. **Direct Install**
+   - Visit [Chrome Web Store](https://chromewebstore.google.com/detail/dddd-alpha-extension/bpkpgegpbcbeflbgicjhdflhfmikgjpc)
+   - Click "Add to Chrome" button
+   - Done! Extension icon appears in toolbar
+
+### Option 2: Download ZIP Package
 
 1. **Download Extension**
    - Click [here to download](https://github.com/DDDDAO/dddd-alpha-extension/releases/download/nightly/dddd-alpha-extension.zip)
@@ -228,7 +242,7 @@ A Chrome extension that helps you **automatically trade tokens to earn Alpha poi
    - Select the extracted folder
    - Done! Extension icon appears in toolbar
 
-### Option 2: Build from Source
+### Option 3: Build from Source
 
 ```bash
 # Clone repository

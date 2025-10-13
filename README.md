@@ -1,406 +1,379 @@
-# DDDD Alpha Extension
+# DDDD Alpha 刷分助手
 
 一个智能化的币安 Alpha 刷分助手，集成稳定代币推荐、自动交易、今日 Alpha 积分与磨损统计以及空投预告等功能。由 DDDDAO 量化社区开发，欢迎进群一起讨论刷分技巧：https://t.me/ddddao2025
 
-
-### 免责声明
-本扩展仅供教育和个人使用。使用风险自负。作者对使用此工具可能产生的任何交易损失或账户问题概不负责。
-
-本插件仅仅辅助计算挂单价格，并且在网页端模拟人工操作进行填写订单信息并点击下单按钮，不会记录和传输任何敏感数据。
-
 插件完全开源免费，仅为学习交流目的，请使用者自行明确是否会因使用插件违反币安Alpha活动规则。
 
-欢迎任何人在遵循 MIT 许可证条款的前提下下载、修改与扩展本项目，但在再发布或引用衍生作品时请保留对原项目的明确署名。
+由 DDDDAO 社区开发 | [Telegram 群组](https://t.me/ddddao2025) | [English Version](#english)
 
-## 安装使用
+## 🎯 这是什么？
 
-### 安装步骤
+这是一个 Chrome 浏览器插件，帮助你在币安 Alpha 活动中**自动买卖代币获取积分**，无需手动操作，插件会自动完成所有交易流程。
 
-**方式一：预构建版本（推荐）**
+### 主要功能
+- ✅ **自动交易**：每隔几秒自动买入和卖出，获取 Alpha 积分
+- ✅ **智能推荐**：实时推荐最稳定、磨损最低的代币
+- ✅ **积分追踪**：实时显示你的积分和交易进度
+- ✅ **风险控制**：自动监控订单，出现异常立即停止
+- ✅ **历史记录**：查看每日交易历史和磨损统计日历
+- ✅ **空投提醒**：显示今日和即将到来的空投活动
 
-1. 下载 [最新预构建包](https://github.com/DDDDAO/dddd-alpha-extension/releases/download/nightly/dddd-alpha-extension.zip)
-2. 解压到任意文件夹
-3. Chrome 浏览器访问 `chrome://extensions`
-4. 启用**开发者模式**（右上角开关）
-5. 点击**加载已解压的扩展程序**
-6. 选择解压后的文件夹
+## 📦 快速安装（5分钟搞定）
 
-**方式二：源码构建**
+### 方法一：下载现成版本（推荐新手）
+
+1. **下载插件包**
+   - 点击 [这里下载插件](https://github.com/DDDDAO/dddd-alpha-extension/releases/download/nightly/dddd-alpha-extension.zip)
+   - 把下载的 zip 文件解压到电脑上任意文件夹
+
+2. **安装到浏览器**
+   - 打开 Chrome 浏览器
+   - 在地址栏输入 `chrome://extensions` 并回车
+   - 打开右上角的「开发者模式」开关
+   - 点击「加载已解压的扩展程序」
+   - 选择刚才解压的文件夹
+   - 完成！插件图标会出现在浏览器右上角
+
+### 方法二：从源码安装（适合进阶用户）
 
 ```bash
+# 下载代码
 git clone git@github.com:DDDDAO/dddd-alpha-extension.git
 cd dddd-alpha-extension
+
+# 安装并构建
 npm install
 npm run build
-# 然后加载 extension/ 文件夹
+
+# 然后在 Chrome 扩展管理页面加载 extension 文件夹
 ```
 
-### 快速开始
+## 🚀 使用教程（超简单）
 
-#### 第一步：选择币种
-1. 点击扩展图标
-2. 查看**稳定性看板**
-   - 自动分析所有代币的价格稳定性和价差
-   - 综合评分（稳定性 50分 + 价差 50分）
-   - 推荐 Top 3 最适合刷分的币种
-3. 点击推荐币种名称跳转到交易页面
+### 准备工作
+1. 登录你的币安账户
+2. 确保账户里有 USDT（建议准备 100-500 USDT）
+3. 打开币安 Alpha 页面：https://www.binance.com/zh-CN/alpha
 
-#### 第二步：配置参数
+### 第一步：选择代币
+1. 点击浏览器右上角的插件图标
+2. 查看**稳定币推荐**板块
+3. 插件会自动推荐3个最适合刷分的代币（稳定、磨损低）
+4. 点击推荐的代币名称，自动跳转到交易页面
 
-**价格偏移模式**
+### 第二步：设置参数
 
-工具会自动计算订单簿的 VWAP（成交量加权平均价），并以此为基准价格进行下单。
+插件提供了三种预设模式，新手直接用默认的「横盘模式」即可：
 
-- **下单价格**：
-  - 买入价 = VWAP × (1 + 买入偏移%)
-  - 卖出价 = VWAP × (1 + 卖出偏移%)
+| 模式 | 适用场景 | 预计磨损 |
+|------|---------|----------|
+| **横盘模式**（推荐） | 价格稳定时使用 | 刷15分约1.6-3.2 USDT |
+| **上涨模式** | 价格上涨时使用 | 刷15分约1.6-3.2 USDT |
+| **自定义模式** | 高级用户自行调整 | 根据设置而定 |
 
-- **预设模式**：
-  - **横盘模式**（推荐）：买入 +0.01%，卖出 -0.01%
-    - 适用于价格稳定时使用
-    - 价差小，磨损低（15分约 5-8U）
-  - **上涨模式**：买入 +0.01%，卖出 +0.02%
-    - 适用于价格上涨趋势
-    - 更快成交卖单（15分约 8-12U）
-  - **自定义模式**：支持 -5% 到 +5% 灵活配置
-    - 极稳币种：+0.001% / -0.001%（磨损约 1.6U）
-    - 快速成交：+0.02% / +0.02%（磨损约 10-15U）
+其他参数（通常不需要改）：
+- **积分系数**：普通代币设为1，4倍积分代币设为4
+- **积分目标**：达到设定分数后自动停止（默认15分）
+- **交易速度**：中速（5-10秒一次）或快速（1-3秒一次）
 
-**积分系数**
-- 4倍Alpha代币设为 4
-- 普通代币保持 1
+### 第三步：开始刷分
+1. 点击「**启动**」按钮
+2. 插件开始自动交易
+3. 实时查看：
+   - 当前积分
+   - 交易次数
+   - 磨损金额
+   - 预警状态
+4. 达到目标积分或手动点击「**停止**」结束
 
-**积分目标**
-- 推荐 15 分（≈ 32,768 USDT）
-- 达到目标后自动停止
+## 📊 功能说明
 
-#### 第三步：启动自动化
+### 稳定币推荐
+- 每8秒自动更新一次数据
+- 根据**价格稳定性**和**买卖价差**综合评分
+- 自动筛选出最适合刷分的代币
+- 价差越小，磨损越低
 
-1. 点击**启动**按钮
-2. 扩展每隔 5-10 秒（中速）或 1-3 秒（快速）自动交易一次
-3. 每个交易周期：
-   - 计算 VWAP 价格
-   - 查询订单历史，统计今日交易量和积分
-   - 智能风控检查（未成交订单、余额、冷却时间）
-   - 自动下单（买入+反向卖出）
-   - 实时监控订单状态
-4. 达到目标或点击**停止**结束
+### 智能下单
+- 自动计算最优价格（VWAP）
+- 根据设置的偏移百分比下单
+- 买入后立即挂反向卖单
+- 全自动执行，无需手动操作
 
-**订单监控**
-- **5秒预警**：订单未成交显示黄色提示 + 提示音
-- **10秒紧急停止**：卖出单未成交自动暂停策略 + 红色警报
+### 预估交易量
+- **智能计算**：根据当前积分自动计算达标所需交易量
+- **实时更新**：显示"还需 X USDT 达到下一分"
+- **精准预测**：基于 log₂ 算法精确计算积分阈值
+- **进度显示**：直观展示当前交易进度百分比
 
-#### 第四步：查看数据
-- **今日买入量**：累计交易量（UTC 时区）
-- **Alpha 积分**：自动计算 floor(log₂(交易量))
-- **成功交易次数**：统计成交订单数量（上限 30次/天）
-- **余额追踪**：
-  - 初始余额、当前余额、总磨损、磨损率
-  - 磨损率颜色提示：绿色（<0.5‱）、黄色（0.5%-1‱）、红色（>1‱）
-- **实时 VWAP**：显示最近一次计算的平均价格
+### 磨损风控机制
+- **多级预警系统**：
+  - 绿色（<0.05%）：正常磨损范围
+  - 黄色（0.05%-0.1%）：轻微预警，注意控制
+  - 红色（>0.1%）：高磨损警告，建议调整策略
+- **智能停损**：磨损超过设定阈值自动暂停
+- **会话追踪**：记录每次启动/停止的磨损数据
+- **累积统计**：显示当日总磨损和单次会话磨损
 
-## 核心功能
+### 历史记录与日历
+- **磨损日历视图**：
+  - 月历展示每日交易数据
+  - 颜色标记不同磨损级别
+  - 点击查看当日详细数据
+- **历史统计**：
+  - 每日交易量、积分、磨损率
+  - 成功交易次数统计
+  - 平均价格追踪
+- **数据导出**：支持导出历史数据用于分析
 
-### 稳定性看板
+### 风险控制
+- **5秒预警**：订单未成交会发出黄色提醒
+- **10秒停止**：卖单长时间未成交自动暂停
+- **余额监控**：实时显示磨损率，异常会变红提醒
+- **智能限制**：自动控制交易频率，避免触发风控
 
-- **实时数据更新**：每 8 秒自动刷新币种稳定性数据
-- **智能评分系统**：基于稳定性（50分）+ 价差（50分）综合评分
-- **Top 3 推荐**：自动筛选最适合刷分的稳定币种
-- **一键跳转**：点击币种名称直接跳转到 Alpha 交易页面
+### 数据统计
+- **今日交易量**：显示累计买入金额
+- **Alpha积分**：实时计算当前积分（floor(log₂(交易量))）
+- **成功次数**：统计成交的订单数
+- **磨损追踪**：显示总磨损金额和百分比
+- **会话统计**：记录每次启动到停止的独立数据
 
-### 自动 VWAP 交易
-
-- **智能价格计算**：自动计算订单簿加权平均价格（VWAP）
-- **实时价格显示**：在代币卡片中显示当前平均价格和更新时间
-- **灵活价格偏移**：
-  - 支持正负百分比偏移（-5% 到 +5%）
-  - 三种预设模式：横盘、上涨、自定义
-  - 买入价和卖出价独立设置
-- **双向挂单策略**：
-  - 买单价格 = 平均价 × (1 + 买入偏移%)
-  - 卖单价格 = 平均价 × (1 + 卖出偏移%)
-- **全仓交易**：每次使用全部可用 USDT 进行交易
-
-### 实时数据面板
-
-- **今日买入量**：累计交易量（UTC 时区）
-- **Alpha 积分**：自动计算 `floor(log2(交易量))`
-- **成功交易次数**：统计成交订单数量
-- **余额跟踪**：
-  - 初始余额：今日首次余额（支持手动刷新）
-  - 当前余额：实时更新
-  - 总成本：初始余额 - 当前余额
-  - 成本比率：磨损百分比
-
-### 空投信息
-
-- **今日空投**：展示当日即可参与的空投项目，含代币、数量、估算价值、阶段、类型等关键信息
-- **空投预告**：列出未来即将开启的空投，标注预计日期、时间和奖励规模，方便提前准备
-- **价格参考**：同步展示相关代币的最新价格，快速评估潜在收益
-- **自动更新**：每 30 分钟自动刷新空投信息
-
-### 国际化支持
-
-- **多语言界面**：支持中文简体和英文
-- **一键切换**：界面右上角快速切换语言
-- **完整翻译**：所有功能和提示均支持双语
-
-### 智能停止机制
-
-- **积分目标达成**：自动停止（默认 15 分 ≈ 32,768 USDT）
-- **订单监控预警**：
-  - 5秒预警：订单未成交显示提示
-  - 10秒紧急停止：卖出单未成交自动暂停策略
-- **手动停止**：随时暂停自动化
-
-## 刷分技巧
-
-### 币种选择策略
-✅ **优先选择**：
-- 稳定性看板中"稳定"标签的币种
-- 价差 < 2 基点的币种
-- 4 倍代币（配合积分系数 4）
-
-❌ **避免选择**：
-- 价格剧烈波动的币种
-- 价差过大的币种（> 5 基点）
-
-### 参数优化指南
-
-| 场景 | 推荐模式 | 买入偏移 | 卖出偏移 | 预估磨损 | 适用情况 |
-|------|---------|---------|---------|---------|---------|
-| 价格稳定 | 横盘模式 | +0.01% | -0.01% | 15分≈5-8U | 大多数情况 |
-| 价格上涨 | 上涨模式 | +0.01% | +0.02% | 15分≈8-12U | 趋势向上 |
-| 极致低成本 | 自定义 | +0.001% | -0.001% | 15分≈1.6U | K线极稳 |
-| 快速成交 | 自定义 | +0.02% | +0.02% | 15分≈10-15U | 急需刷分 |
-
-**负价差说明**：
-
-- 卖出偏移为负值（如 -0.01%）表示以低于平均价的价格挂卖单
-- 可以加快卖单成交速度，但会增加磨损
-- 适合价格稳定、需要快速完成交易的场景
-
-## 重要提示
+## ⚠️ 注意事项
 
 ### 使用须知
-- 需登录币安账户
-- 确保足够 USDT 余额
-- 每次全仓买卖
-- 交易有风险，投资需谨慎
+- 插件完全**免费开源**，无任何收费
+- 只在浏览器端运行，**不会窃取**你的账户信息
+- 需要保持浏览器和币安页面开启
+- 建议使用稳定的网络环境
 
-### 安全说明
-- 不存储任何密码或私钥
-- 仅通过浏览器 UI 操作
-- 需手动登录认证
-- 完全开源，代码透明
+### 风险提醒
+- 交易有风险，可能产生磨损
+- 请合理设置参数，避免频繁交易
+- 本工具仅供学习交流，使用风险自负
 
-### 许可证
-MIT 许可证 - 可自由修改和分发
+## 🆘 常见问题
 
+**Q: 插件安全吗？**
+A: 完全安全。代码开源，不存储密码，只通过模拟点击操作。
+
+**Q: 为什么订单没有成交？**
+A: 可能是价格偏移设置过小或市场波动大，可以适当调整偏移百分比。
+
+**Q: 磨损太高怎么办？**
+A: 选择更稳定的代币，使用更小的价格偏移（如0.001%）。
+
+**Q: 可以同时刷多个代币吗？**
+A: 不建议。插件设计为单代币运行，确保稳定性。
+
+**Q: 支持其他浏览器吗？**
+A: 目前支持 Chrome 和 Edge，其他 Chromium 内核浏览器理论上也可以。
+
+**Q: 历史数据保存在哪里？**
+A: 数据保存在浏览器本地存储中，卸载插件会清除数据。
+
+**Q: 如何降低磨损？**
+A: 选择稳定币种、减小价格偏移、降低交易频率。
+
+## 💬 加入社区
+
+- **Telegram 群组**：https://t.me/ddddao2025
+- **GitHub Issues**：[提交问题或建议](https://github.com/DDDDAO/DDDD-Alpha-Extension/issues)
+
+## 📜 免责声明
+
+本插件仅供学习和个人使用，不构成投资建议。使用本插件产生的任何损失或问题，开发者不承担责任。请遵守币安使用条款和当地法律法规。
 
 ---
 
+# English
 
-# DDDD Alpha Extension (English)
+# DDDD Alpha Assistant
 
-An intelligent Binance Alpha points farming assistant that integrates stable token recommendations, automated trading, real-time Alpha points tracking with cost statistics, and airdrop announcements. Developed by DDDDAO Quant Community. Join our Telegram group to discuss farming strategies: https://t.me/ddddao2025
+An intelligent Binance Alpha farming assistant that integrates stable token recommendations, automated trading, real-time Alpha points tracking with cost statistics, and airdrop announcements. Developed by DDDDAO Quant Community. Join our Telegram group to discuss farming strategies: https://t.me/ddddao2025
 
+This extension is completely free and open-source, for educational and communication purposes only. Users should determine whether using the extension may violate Binance Alpha activity rules.
 
-### Disclaimer
-This extension is for educational and personal use only. Use at your own risk. The authors are not responsible for any trading losses or account issues resulting from the use of this tool.
+Developed by DDDDAO Community | [Telegram Group](https://t.me/ddddao2025)
 
-This extension only assists in calculating order prices and simulates human operations on the web page to fill in order information and click the order button. It does not record or transmit any sensitive data.
+## 🎯 What is this?
 
-The extension is completely open-source and free, intended for educational and communication purposes only. Users should determine whether using the extension may violate Binance Alpha activity rules.
+A Chrome extension that helps you **automatically trade tokens to earn Alpha points** on Binance Alpha platform. No manual operation needed - the extension handles everything for you.
 
-Anyone is welcome to download, modify, and extend this project under the terms of the MIT license, but please provide clear attribution to the original project when republishing or citing derivative works.
+### Key Features
+- ✅ **Auto Trading**: Automatically buy and sell every few seconds
+- ✅ **Smart Recommendations**: Real-time suggestions for most stable tokens
+- ✅ **Points Tracking**: Live display of your points and progress
+- ✅ **Risk Control**: Auto-monitoring with emergency stop
+- ✅ **History Records**: View daily trading history and cost statistics calendar
+- ✅ **Airdrop Alerts**: Shows today's and upcoming airdrops
 
-## Installation and Usage
+## 📦 Quick Installation (5 minutes)
 
-### Installation Steps
+### Option 1: Download Pre-built Version (Recommended)
 
-**Option 1: Pre-built Version (Recommended)**
+1. **Download Extension**
+   - Click [here to download](https://github.com/DDDDAO/dddd-alpha-extension/releases/download/nightly/dddd-alpha-extension.zip)
+   - Extract the zip file to any folder
 
-1. Download [latest pre-built package](https://github.com/DDDDAO/dddd-alpha-extension/releases/download/nightly/dddd-alpha-extension.zip)
-2. Extract to any folder
-3. Open `chrome://extensions` in Chrome browser
-4. Enable **Developer mode** (toggle in top-right corner)
-5. Click **Load unpacked**
-6. Select the extracted folder
+2. **Install in Browser**
+   - Open Chrome browser
+   - Go to `chrome://extensions`
+   - Enable "Developer mode" (top right)
+   - Click "Load unpacked"
+   - Select the extracted folder
+   - Done! Extension icon appears in toolbar
 
-**Option 2: Build from Source**
+### Option 2: Build from Source
 
 ```bash
+# Clone repository
 git clone git@github.com:DDDDAO/dddd-alpha-extension.git
 cd dddd-alpha-extension
+
+# Install and build
 npm install
 npm run build
-# Then load the extension/ folder
+
+# Load the extension folder in Chrome
 ```
 
-### Quick Start
+## 🚀 How to Use (Super Easy)
 
-#### Step 1: Select Token
-1. Click the extension icon
-2. Check the **Stability Dashboard**
-   - Automatically analyzes price stability and spread for all tokens
-   - Composite score (Stability 50 pts + Spread 50 pts)
-   - Recommends Top 3 most suitable tokens for farming
-3. Click on the recommended token name to navigate to the trading page
+### Preparation
+1. Log in to your Binance account
+2. Ensure you have USDT (recommend 100-500 USDT)
+3. Open Binance Alpha: https://www.binance.com/en/alpha
 
-#### Step 2: Configure Parameters
+### Step 1: Choose Token
+1. Click extension icon in browser toolbar
+2. Check "Stability Dashboard" section
+3. Extension recommends 3 best tokens for farming
+4. Click token name to jump to trading page
 
-**Price Offset Mode**
+### Step 2: Configure Settings
 
-The tool automatically calculates the VWAP (Volume-Weighted Average Price) from the order book and uses it as the base price for placing orders.
+Three preset modes available - beginners can use default "Sideways Mode":
 
-- **Order Prices**:
-  - Buy Price = VWAP × (1 + Buy Offset %)
-  - Sell Price = VWAP × (1 + Sell Offset %)
+| Mode | Use Case | Est. Cost |
+|------|----------|-----------|
+| **Sideways** (Recommended) | Stable prices | 15 pts ≈ 1.6-3.2 USDT |
+| **Bullish** | Rising prices | 15 pts ≈ 1.6-3.2 USDT |
+| **Custom** | Advanced users | Varies |
 
-- **Preset Modes**:
-  - **Sideways Mode** (Recommended): Buy +0.01%, Sell -0.01%
-    - Suitable for stable prices
-    - Small spread, low cost (15 pts ≈ 5-8 USDT)
-  - **Bullish Mode**: Buy +0.01%, Sell +0.02%
-    - Suitable for upward price trends
-    - Faster sell order execution (15 pts ≈ 8-12 USDT)
-  - **Custom Mode**: Flexible configuration from -5% to +5%
-    - Ultra-stable tokens: +0.001% / -0.001% (cost ≈ 1.6 USDT)
-    - Fast execution: +0.02% / +0.02% (cost ≈ 10-15 USDT)
+Other settings (usually no change needed):
+- **Points Factor**: 1 for regular, 4 for 4x tokens
+- **Points Target**: Auto-stop at target (default 15)
+- **Speed**: Medium (5-10s) or Fast (1-3s)
 
-**Points Factor**
-- Set to 4 for 4x Alpha tokens
-- Keep at 1 for regular tokens
+### Step 3: Start Farming
+1. Click "**Start**" button
+2. Extension begins auto-trading
+3. Monitor in real-time:
+   - Current points
+   - Trade count
+   - Cost amount
+   - Warning status
+4. Stops at target or click "**Stop**" manually
 
-**Points Target**
-- Recommended 15 pts (≈ 32,768 USDT)
-- Automatically stops after reaching target
-
-#### Step 3: Start Automation
-
-1. Click the **Start** button
-2. Extension automatically trades every 5-10 seconds (medium speed) or 1-3 seconds (fast speed)
-3. Each trading cycle:
-   - Calculate VWAP price
-   - Query order history, track daily volume and points
-   - Smart risk control checks (pending orders, balance, cooldown)
-   - Auto-place orders (buy + reverse sell)
-   - Real-time order status monitoring
-4. Stops when target is reached or **Stop** is clicked
-
-**Order Monitoring**
-- **5-second Warning**: Yellow alert + notification sound if order is not filled
-- **10-second Emergency Stop**: Automatically pauses strategy + red alarm if sell order is not filled
-
-#### Step 4: View Data
-- **Today's Buy Volume**: Cumulative trading volume (UTC timezone)
-- **Alpha Points**: Automatically calculates floor(log₂(volume))
-- **Successful Trades**: Count of executed orders (limit 30 per day)
-- **Balance Tracking**:
-  - Initial balance, current balance, total cost, cost ratio
-  - Color indicators: Green (<0.5‱), Yellow (0.5%-1‱), Red (>1‱)
-- **Real-time VWAP**: Displays the most recently calculated average price
-
-## Core Features
+## 📊 Features Explained
 
 ### Stability Dashboard
+- Updates every 8 seconds
+- Scores based on **price stability** and **spread**
+- Auto-filters best tokens for farming
+- Lower spread = lower cost
 
-- **Real-time Data Updates**: Automatically refreshes token stability data every 8 seconds
-- **Smart Scoring System**: Composite score based on Stability (50 pts) + Spread (50 pts)
-- **Top 3 Recommendations**: Automatically filters the most suitable stable tokens for farming
-- **One-click Navigation**: Click token name to jump directly to Alpha trading page
+### Smart Orders
+- Auto-calculates optimal price (VWAP)
+- Places orders with configured offset
+- Immediate reverse order after buy
+- Fully automated execution
 
-### Automated VWAP Trading
+### Volume Estimation
+- **Smart Calculation**: Auto-calculates required volume to reach target
+- **Real-time Updates**: Shows "Need X USDT for next point"
+- **Precise Prediction**: Based on log₂ algorithm for accurate thresholds
+- **Progress Display**: Visual representation of current progress percentage
 
-- **Smart Price Calculation**: Automatically calculates Volume-Weighted Average Price (VWAP) from order book
-- **Real-time Price Display**: Shows current average price and update time in token card
-- **Flexible Price Offset**:
-  - Supports positive/negative percentage offset (-5% to +5%)
-  - Three preset modes: Sideways, Bullish, Custom
-  - Independent buy and sell price settings
-- **Dual Order Strategy**:
-  - Buy order price = Average price × (1 + Buy offset %)
-  - Sell order price = Average price × (1 + Sell offset %)
-- **Full Position Trading**: Uses all available USDT for each trade
+### Cost Risk Control
+- **Multi-level Warning System**:
+  - Green (<0.05%): Normal cost range
+  - Yellow (0.05%-0.1%): Minor warning, monitor closely
+  - Red (>0.1%): High cost alert, adjust strategy
+- **Smart Stop-loss**: Auto-pause when cost exceeds threshold
+- **Session Tracking**: Records cost data for each start/stop session
+- **Cumulative Stats**: Shows daily total cost and per-session cost
 
-### Real-time Data Panel
+### History & Calendar
+- **Cost Calendar View**:
+  - Monthly calendar showing daily trading data
+  - Color coding for different cost levels
+  - Click to view detailed daily data
+- **Historical Statistics**:
+  - Daily volume, points, cost ratio
+  - Successful trade count
+  - Average price tracking
+- **Data Export**: Export historical data for analysis
 
-- **Today's Buy Volume**: Cumulative trading volume (UTC timezone)
-- **Alpha Points**: Automatically calculates `floor(log2(volume))`
-- **Successful Trades**: Count of executed orders
-- **Balance Tracking**:
-  - Initial Balance: First balance of the day (manual refresh supported)
-  - Current Balance: Real-time updates
-  - Total Cost: Initial balance - Current balance
-  - Cost Ratio: Slippage percentage
+### Risk Control
+- **5-sec Warning**: Yellow alert for unfilled orders
+- **10-sec Stop**: Auto-pause for stuck sell orders
+- **Balance Monitor**: Real-time cost ratio display
+- **Smart Limiting**: Controls trading frequency to avoid risk triggers
 
-### Airdrop Information
+### Statistics
+- **Today's Volume**: Cumulative buy amount
+- **Alpha Points**: Real-time calculation (floor(log₂(volume)))
+- **Success Count**: Number of filled orders
+- **Cost Tracking**: Total cost amount and percentage
+- **Session Stats**: Independent data for each start-stop session
 
-- **Today's Airdrops**: Displays airdrop projects available today, including token, quantity, estimated value, stage, type, and other key information
-- **Upcoming Airdrops**: Lists upcoming airdrops with expected date, time, and reward size for advance preparation
-- **Price Reference**: Shows latest token prices for quick assessment of potential returns
-- **Auto-update**: Automatically refreshes airdrop information every 30 minutes
+## ⚠️ Important Notes
 
-### Internationalization Support
+### Usage Notes
+- Extension is **completely free and open-source**
+- Runs only in browser, **no data theft**
+- Keep browser and Binance page open
+- Use stable internet connection
 
-- **Multi-language Interface**: Supports Simplified Chinese and English
-- **One-click Switch**: Quick language toggle in top-right corner
-- **Complete Translation**: All features and tooltips support both languages
+### Risk Warning
+- Trading involves costs
+- Set parameters carefully
+- For educational purposes only, use at your own risk
 
-### Smart Stop Mechanism
+## 🆘 FAQ
 
-- **Points Target Achievement**: Auto-stop (default 15 pts ≈ 32,768 USDT)
-- **Order Monitoring Alerts**:
-  - 5-second warning: Display alert for unfilled orders
-  - 10-second emergency stop: Automatically pause strategy for unfilled sell orders
-- **Manual Stop**: Pause automation at any time
+**Q: Is it safe?**
+A: Yes. Open-source code, no password storage, only simulates clicks.
 
-## Farming Tips
+**Q: Why aren't orders filling?**
+A: Price offset may be too small or market is volatile. Adjust offset percentage.
 
-### Token Selection Strategy
-✅ **Priority Selection**:
-- Tokens with "Stable" label in the stability dashboard
-- Tokens with spread < 2 basis points
-- 4x tokens (with points factor set to 4)
+**Q: Cost too high?**
+A: Choose more stable tokens, use smaller offset (e.g., 0.001%).
 
-❌ **Avoid**:
-- Tokens with high price volatility
-- Tokens with excessive spread (> 5 basis points)
+**Q: Can I farm multiple tokens?**
+A: Not recommended. Extension designed for single token stability.
 
-### Parameter Optimization Guide
+**Q: Other browsers supported?**
+A: Currently Chrome and Edge. Other Chromium browsers may work.
 
-| Scenario | Recommended Mode | Buy Offset | Sell Offset | Est. Cost | Use Case |
-|----------|-----------------|-----------|-------------|-----------|----------|
-| Stable Price | Sideways | +0.01% | -0.01% | 15pts≈5-8U | Most cases |
-| Rising Price | Bullish | +0.01% | +0.02% | 15pts≈8-12U | Upward trend |
-| Ultra-low Cost | Custom | +0.001% | -0.001% | 15pts≈1.6U | Very stable chart |
-| Fast Execution | Custom | +0.02% | +0.02% | 15pts≈10-15U | Urgent farming |
+**Q: Where is history data saved?**
+A: Data is saved in browser local storage, will be cleared if extension is uninstalled.
 
-**Negative Offset Explanation**:
+**Q: How to reduce costs?**
+A: Choose stable tokens, reduce price offset, lower trading frequency.
 
-- Negative sell offset (e.g., -0.01%) means placing sell orders below the average price
-- Speeds up sell order execution but increases cost
-- Suitable for stable prices when quick trade completion is needed
+## 💬 Join Community
 
-## Important Notes
+- **Telegram Group**: https://t.me/ddddao2025
+- **GitHub Issues**: [Submit issues or suggestions](https://github.com/DDDDAO/DDDD-Alpha-Extension/issues)
 
-### Usage Requirements
-- Binance account login required
-- Ensure sufficient USDT balance
-- Full position trading for each order
-- Trading involves risk, invest cautiously
+## 📜 Disclaimer
 
-### Security Notes
-- No passwords or private keys stored
-- Operations only through browser UI
-- Manual login authentication required
-- Fully open-source, transparent code
+This extension is for educational and personal use only. Not investment advice. Developers are not responsible for any losses from using this tool. Please follow Binance terms and local regulations.
 
-### License
-MIT License - Free to modify and distribute
-
-
-## Star History
+---
 
 [![Star History Chart](https://api.star-history.com/svg?repos=DDDDAO/DDDD-Alpha-Extension&type=Date)](https://star-history.com/#DDDDAO/DDDD-Alpha-Extension&Date)

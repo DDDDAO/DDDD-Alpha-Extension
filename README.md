@@ -2,6 +2,8 @@
 
 一个智能化的币安 Alpha 刷分助手，集成稳定代币推荐、自动交易、今日 Alpha 积分与磨损统计以及空投预告等功能。由 DDDDAO 量化社区开发，欢迎进群一起讨论刷分技巧：https://t.me/ddddao2025
 
+📖 **[币安 TGE 参与教程](./TGE_QUICKSTART.md)** - 了解如何参与币安 TGE 活动，获取空投奖励
+
 
 ### 免责声明
 本扩展仅供教育和个人使用。使用风险自负。作者对使用此工具可能产生的任何交易损失或账户问题概不负责。
@@ -204,6 +206,8 @@ MIT 许可证 - 可自由修改和分发
 # DDDD Alpha Extension (English)
 
 An intelligent Binance Alpha points farming assistant that integrates stable token recommendations, automated trading, real-time Alpha points tracking with cost statistics, and airdrop announcements. Developed by DDDDAO Quant Community. Join our Telegram group to discuss farming strategies: https://t.me/ddddao2025
+
+📖 **[Binance TGE Quickstart Guide](./TGE_QUICKSTART.md)** - Learn how to participate in Binance TGE events and claim airdrop rewards
 
 
 ### Disclaimer

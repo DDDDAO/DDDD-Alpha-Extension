@@ -4,6 +4,8 @@
 
 插件完全开源免费，仅为学习交流目的，请使用者自行明确是否会因使用插件违反币安Alpha活动规则。
 
+📖 **[币安 TGE 参与教程](./TGE_QUICKSTART.md)** - 了解如何参与币安 TGE 活动，获取空投奖励
+
 由 DDDDAO 社区开发 | [Telegram 群组](https://t.me/ddddao2025) | [English Version](#english)
 
 ## 🎯 这是什么？
@@ -193,6 +195,8 @@ A: 选择稳定币种、减小价格偏移、降低交易频率。
 An intelligent Binance Alpha farming assistant that integrates stable token recommendations, automated trading, real-time Alpha points tracking with cost statistics, and airdrop announcements. Developed by DDDDAO Quant Community. Join our Telegram group to discuss farming strategies: https://t.me/ddddao2025
 
 This extension is completely free and open-source, for educational and communication purposes only. Users should determine whether using the extension may violate Binance Alpha activity rules.
+
+📖 **[Binance TGE Quickstart Guide](./TGE_QUICKSTART.md)** - Learn how to participate in Binance TGE events and claim airdrop rewards
 
 Developed by DDDDAO Community | [Telegram Group](https://t.me/ddddao2025)
 

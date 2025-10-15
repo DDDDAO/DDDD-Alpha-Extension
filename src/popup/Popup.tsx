@@ -2206,12 +2206,12 @@ export function Popup(): React.ReactElement {
                   <Text type="secondary" style={{ fontSize: 13, fontWeight: 500 }}>
                     买入取消时间
                   </Text>
-                  <Tooltip title="买入限价单超过此时间未成交将自动取消并发出警报">
+                  <Tooltip title="买入限价单超过此时间未成交将自动取消并发出警报。设置为0则不自动取消">
                     <InfoCircleOutlined style={{ color: '#1890ff' }} />
                   </Tooltip>
                 </Space>
                 <InputNumber
-                  min={1}
+                  min={0}
                   max={60}
                   step={1}
                   placeholder="5"
@@ -2227,7 +2227,7 @@ export function Popup(): React.ReactElement {
                   onBlur={() => {
                     isEditingBuyCancelTime.current = false;
                     const parsed = Number.parseFloat(_buyCancelTimeSec);
-                    const finalValue = Number.isFinite(parsed) && parsed > 0 ? parsed : 5;
+                    const finalValue = Number.isFinite(parsed) && parsed >= 0 ? parsed : 5;
                     _setBuyCancelTimeSec(String(finalValue));
                     void persistSchedulerSettings({
                       buyCancelTimeSec: finalValue,
@@ -2250,12 +2250,12 @@ export function Popup(): React.ReactElement {
                   <Text type="secondary" style={{ fontSize: 13, fontWeight: 500 }}>
                     卖出警告时间
                   </Text>
-                  <Tooltip title="卖出限价单超过此时间未成交将发出警告提示">
+                  <Tooltip title="卖出限价单超过此时间未成交将发出警告提示。设置为0则不警告">
                     <InfoCircleOutlined style={{ color: '#1890ff' }} />
                   </Tooltip>
                 </Space>
                 <InputNumber
-                  min={1}
+                  min={0}
                   max={60}
                   step={1}
                   placeholder="5"
@@ -2271,7 +2271,7 @@ export function Popup(): React.ReactElement {
                   onBlur={() => {
                     isEditingSellWarningTime.current = false;
                     const parsed = Number.parseFloat(_sellWarningTimeSec);
-                    const finalValue = Number.isFinite(parsed) && parsed > 0 ? parsed : 5;
+                    const finalValue = Number.isFinite(parsed) && parsed >= 0 ? parsed : 5;
                     _setSellWarningTimeSec(String(finalValue));
                     void persistSchedulerSettings({
                       sellWarningTimeSec: finalValue,
@@ -2294,12 +2294,12 @@ export function Popup(): React.ReactElement {
                   <Text type="secondary" style={{ fontSize: 13, fontWeight: 500 }}>
                     卖出取消时间
                   </Text>
-                  <Tooltip title="卖出限价单超过此时间未成交将自动取消并暂停策略">
+                  <Tooltip title="卖出限价单超过此时间未成交将自动取消并暂停策略。设置为0则不自动取消">
                     <InfoCircleOutlined style={{ color: '#1890ff' }} />
                   </Tooltip>
                 </Space>
                 <InputNumber
-                  min={1}
+                  min={0}
                   max={60}
                   step={1}
                   placeholder="10"
@@ -2315,7 +2315,7 @@ export function Popup(): React.ReactElement {
                   onBlur={() => {
                     isEditingSellCancelTime.current = false;
                     const parsed = Number.parseFloat(_sellCancelTimeSec);
-                    const finalValue = Number.isFinite(parsed) && parsed > 0 ? parsed : 10;
+                    const finalValue = Number.isFinite(parsed) && parsed >= 0 ? parsed : 10;
                     _setSellCancelTimeSec(String(finalValue));
                     void persistSchedulerSettings({
                       sellCancelTimeSec: finalValue,

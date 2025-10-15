@@ -506,11 +506,6 @@ chrome.runtime.onMessage.addListener((message: RuntimeMessage, _sender, sendResp
 
 initializeAutomationStateWatcher();
 void sendInitialBalanceUpdate();
-if (!monitoringEnabled) {
-  monitoringEnabled = true;
-  startPendingOrderMonitor();
-  console.log('[dddd-alpha-extension] Pending order monitor activated on script init');
-}
 
 async function sendInitialBalanceUpdate(): Promise<void> {
   // 延迟5秒,确保页面有足够时间加载余额
@@ -1450,6 +1445,20 @@ function startPendingOrderMonitor(): void {
   pendingBuyOrderMonitorId = window.setInterval(runCheck, PENDING_ORDER_CHECK_INTERVAL_MS);
 }
 
+function stopPendingOrderMonitor(): void {
+  if (pendingBuyOrderMonitorId !== undefined) {
+    clearInterval(pendingBuyOrderMonitorId);
+    pendingBuyOrderMonitorId = undefined;
+  }
+  monitoringEnabled = false;
+
+  // 清理所有监控状态
+  pendingOrderTimestamps.clear();
+  pending5SecWarningsShown.clear();
+  pending10SecWarningsShown.clear();
+  pendingOrdersCancelled.clear();
+}
+
 function checkPendingLimitOrders(): void {
   if (!monitoringEnabled) {
     return;
@@ -1498,9 +1507,12 @@ function checkPendingLimitOrders(): void {
     if (!order) continue;
 
     const elapsed = now - startedAt;
-    const buyCancelDue = order.side === 'buy' && elapsed >= buyCancelTimeMs;
-    const sellWarningDue = order.side === 'sell' && elapsed >= sellWarningTimeMs;
-    const sellCancelDue = order.side === 'sell' && elapsed >= sellCancelTimeMs;
+    // 如果时间设置为 0，则表示禁用该功能
+    const buyCancelDue = order.side === 'buy' && buyCancelTimeMs > 0 && elapsed >= buyCancelTimeMs;
+    const sellWarningDue =
+      order.side === 'sell' && sellWarningTimeMs > 0 && elapsed >= sellWarningTimeMs;
+    const sellCancelDue =
+      order.side === 'sell' && sellCancelTimeMs > 0 && elapsed >= sellCancelTimeMs;
 
     if (!pendingOrdersCancelled.has(key) && (buyCancelDue || sellCancelDue)) {
       const cancelled = cancelLimitOrder(order.row);
@@ -2088,6 +2100,7 @@ function teardownPolling(): void {
 
   automationLoopActive = false;
   evaluationInProgress = false;
+  stopPendingOrderMonitor();
 }
 
 function getRandomAutomationDelay(): number {
@@ -2206,21 +2219,22 @@ function applyAutomationState(value: unknown): void {
       nextPointsTarget = extractPointsTarget(targetCandidate);
 
       // 读取时间配置（秒 -> 毫秒）
+      // 允许设置为 0 来禁用相应的监控功能
       const buyCancelSecCandidate = (record.settings as { buyCancelTimeSec?: unknown })
         .buyCancelTimeSec;
-      if (typeof buyCancelSecCandidate === 'number' && buyCancelSecCandidate > 0) {
+      if (typeof buyCancelSecCandidate === 'number' && buyCancelSecCandidate >= 0) {
         nextBuyCancelTimeMs = buyCancelSecCandidate * 1000;
       }
 
       const sellWarningSecCandidate = (record.settings as { sellWarningTimeSec?: unknown })
         .sellWarningTimeSec;
-      if (typeof sellWarningSecCandidate === 'number' && sellWarningSecCandidate > 0) {
+      if (typeof sellWarningSecCandidate === 'number' && sellWarningSecCandidate >= 0) {
         nextSellWarningTimeMs = sellWarningSecCandidate * 1000;
       }
 
       const sellCancelSecCandidate = (record.settings as { sellCancelTimeSec?: unknown })
         .sellCancelTimeSec;
-      if (typeof sellCancelSecCandidate === 'number' && sellCancelSecCandidate > 0) {
+      if (typeof sellCancelSecCandidate === 'number' && sellCancelSecCandidate >= 0) {
         nextSellCancelTimeMs = sellCancelSecCandidate * 1000;
       }
 
@@ -2272,7 +2286,14 @@ function applyAutomationState(value: unknown): void {
   if (!automationEnabled) {
     teardownPolling();
   } else if (wasDisabled && automationEnabled) {
-    // 策略从禁用变为启用时，自动切换到买入限价单模式
+    // 策略从禁用变为启用时，启动订单监控和自动切换到买入限价单模式
+    if (!monitoringEnabled) {
+      monitoringEnabled = true;
+      startPendingOrderMonitor();
+      // eslint-disable-next-line no-console
+      console.log('[dddd-alpha-extension] Order monitoring enabled');
+    }
+
     // eslint-disable-next-line no-console
     console.log('[dddd-alpha-extension] 策略已启动，准备切换到买入限价单模式...');
 

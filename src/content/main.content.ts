@@ -387,6 +387,7 @@ const pendingOrderTimestamps = new Map<string, number>();
 const pending5SecWarningsShown = new Set<string>(); // 5秒普通警告已显示的订单
 const pending10SecWarningsShown = new Set<string>(); // 10秒紧急警告已显示的订单
 const pendingOrdersCancelled = new Set<string>(); // 已自动取消的订单
+const acknowledgedUrgentOrders = new Set<string>(); // 用户已确认知晓的紧急警告订单
 
 chrome.runtime.onMessage.addListener((message: RuntimeMessage, _sender, sendResponse) => {
   // eslint-disable-next-line no-console
@@ -1457,10 +1458,12 @@ function stopPendingOrderMonitor(): void {
   pending5SecWarningsShown.clear();
   pending10SecWarningsShown.clear();
   pendingOrdersCancelled.clear();
+  acknowledgedUrgentOrders.clear();
 }
 
 function checkPendingLimitOrders(): void {
-  if (!monitoringEnabled) {
+  // 双重检查：必须同时满足监控启用和策略启用
+  if (!monitoringEnabled || !automationEnabled) {
     return;
   }
 
@@ -1470,12 +1473,14 @@ function checkPendingLimitOrders(): void {
       pendingOrderTimestamps.size > 0 ||
       pending5SecWarningsShown.size > 0 ||
       pending10SecWarningsShown.size > 0 ||
-      pendingOrdersCancelled.size > 0
+      pendingOrdersCancelled.size > 0 ||
+      acknowledgedUrgentOrders.size > 0
     ) {
       pendingOrderTimestamps.clear();
       pending5SecWarningsShown.clear();
       pending10SecWarningsShown.clear();
       pendingOrdersCancelled.clear();
+      acknowledgedUrgentOrders.clear();
     }
     return;
   }
@@ -1499,6 +1504,7 @@ function checkPendingLimitOrders(): void {
       pending5SecWarningsShown.delete(key);
       pending10SecWarningsShown.delete(key);
       pendingOrdersCancelled.delete(key);
+      acknowledgedUrgentOrders.delete(key);
     }
   }
 
@@ -1570,6 +1576,11 @@ function checkPendingLimitOrders(): void {
     }
 
     if (sellCancelDue) {
+      // 如果用户已确认知晓此订单，跳过报警但继续监控
+      if (acknowledgedUrgentOrders.has(key)) {
+        continue;
+      }
+
       if (!pending10SecWarningsShown.has(key)) {
         const seconds = Math.round(sellCancelTimeMs / 1000);
         console.error(
@@ -1584,14 +1595,10 @@ function checkPendingLimitOrders(): void {
           console.warn('[dddd-alpha-extension] Failed to dispatch CONTROL_STOP:', error);
         });
 
-        showUrgentSellAlert(seconds);
+        showUrgentSellAlert(seconds, key);
         pending10SecWarningsShown.add(key);
       }
 
-      pendingOrderTimestamps.delete(key);
-      pending5SecWarningsShown.delete(key);
-      pending10SecWarningsShown.delete(key);
-      pendingOrdersCancelled.delete(key);
       continue;
     }
 
@@ -1900,7 +1907,7 @@ function playUrgentAlertSound(): void {
 /**
  * 显示紧急卖出警告 - 策略已暂停
  */
-function showUrgentSellAlert(timeSeconds: number): void {
+function showUrgentSellAlert(timeSeconds: number, orderKey: string): void {
   const body = document.body;
   if (!body) {
     return;
@@ -2019,6 +2026,9 @@ function showUrgentSellAlert(timeSeconds: number): void {
 
   actionButton.addEventListener('click', (event) => {
     event.stopPropagation();
+    // 将订单标记为已确认，避免重复报警
+    acknowledgedUrgentOrders.add(orderKey);
+    console.log(`[dddd-alpha-extension] 用户已确认订单 ${orderKey}，将不再重复报警`);
     dismiss();
   });
 
@@ -2782,9 +2792,9 @@ function scheduleOrderConfirmationClick(): void {
         );
         confirmButton.click();
 
-        // 点击确认按钮后，启动订单监控
+        // 点击确认按钮后，仅在策略启用时启动订单监控
         window.setTimeout(() => {
-          if (!monitoringEnabled) {
+          if (automationEnabled && !monitoringEnabled) {
             monitoringEnabled = true;
             startPendingOrderMonitor();
             // eslint-disable-next-line no-console

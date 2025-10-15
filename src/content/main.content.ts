@@ -1513,9 +1513,12 @@ function checkPendingLimitOrders(): void {
     if (!order) continue;
 
     const elapsed = now - startedAt;
-    const buyCancelDue = order.side === 'buy' && elapsed >= buyCancelTimeMs;
-    const sellWarningDue = order.side === 'sell' && elapsed >= sellWarningTimeMs;
-    const sellCancelDue = order.side === 'sell' && elapsed >= sellCancelTimeMs;
+    // 如果时间设置为 0，则表示禁用该功能
+    const buyCancelDue = order.side === 'buy' && buyCancelTimeMs > 0 && elapsed >= buyCancelTimeMs;
+    const sellWarningDue =
+      order.side === 'sell' && sellWarningTimeMs > 0 && elapsed >= sellWarningTimeMs;
+    const sellCancelDue =
+      order.side === 'sell' && sellCancelTimeMs > 0 && elapsed >= sellCancelTimeMs;
 
     if (!pendingOrdersCancelled.has(key) && (buyCancelDue || sellCancelDue)) {
       const cancelled = cancelLimitOrder(order.row);
@@ -2226,21 +2229,22 @@ function applyAutomationState(value: unknown): void {
       nextPointsTarget = extractPointsTarget(targetCandidate);
 
       // 读取时间配置（秒 -> 毫秒）
+      // 允许设置为 0 来禁用相应的监控功能
       const buyCancelSecCandidate = (record.settings as { buyCancelTimeSec?: unknown })
         .buyCancelTimeSec;
-      if (typeof buyCancelSecCandidate === 'number' && buyCancelSecCandidate > 0) {
+      if (typeof buyCancelSecCandidate === 'number' && buyCancelSecCandidate >= 0) {
         nextBuyCancelTimeMs = buyCancelSecCandidate * 1000;
       }
 
       const sellWarningSecCandidate = (record.settings as { sellWarningTimeSec?: unknown })
         .sellWarningTimeSec;
-      if (typeof sellWarningSecCandidate === 'number' && sellWarningSecCandidate > 0) {
+      if (typeof sellWarningSecCandidate === 'number' && sellWarningSecCandidate >= 0) {
         nextSellWarningTimeMs = sellWarningSecCandidate * 1000;
       }
 
       const sellCancelSecCandidate = (record.settings as { sellCancelTimeSec?: unknown })
         .sellCancelTimeSec;
-      if (typeof sellCancelSecCandidate === 'number' && sellCancelSecCandidate > 0) {
+      if (typeof sellCancelSecCandidate === 'number' && sellCancelSecCandidate >= 0) {
         nextSellCancelTimeMs = sellCancelSecCandidate * 1000;
       }
 

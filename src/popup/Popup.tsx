@@ -1575,6 +1575,11 @@ export function Popup(): React.ReactElement {
                   <Text style={{ fontSize: 13, color: '#595959', lineHeight: 1.6 }}>
                     {t('plugin.desc2')}
                   </Text>
+                  <Text
+                    style={{ fontSize: 13, color: '#1890ff', lineHeight: 1.6, fontWeight: 500 }}
+                  >
+                    {t('plugin.desc3')}
+                  </Text>
                   <Link href={GITHUB_REPO_URL} target="_blank" rel="noopener noreferrer">
                     <Space size={8} align="center">
                       <img

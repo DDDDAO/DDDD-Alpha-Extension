@@ -43,6 +43,7 @@ const DEFAULT_SELL_CANCEL_TIME_MS = 10_000; // 卖出限价单自动取消时间
 const PENDING_ORDER_CHECK_INTERVAL_MS = 1_000;
 const PENDING_ORDER_WARNING_ELEMENT_ID = 'dddd-alpha-pending-order-warning';
 const URGENT_SELL_ALERT_ELEMENT_ID = 'dddd-alpha-urgent-sell-alert';
+const GOOGLE_AUTH_ALERT_ELEMENT_ID = 'dddd-alpha-google-auth-alert';
 
 const MIN_PRICE_OFFSET_PERCENT = -5;
 const MAX_PRICE_OFFSET_PERCENT = 5;
@@ -389,6 +390,9 @@ const pending10SecWarningsShown = new Set<string>(); // 10秒紧急警告已显�
 const pendingOrdersCancelled = new Set<string>(); // 已自动取消的订单
 const acknowledgedUrgentOrders = new Set<string>(); // 用户已确认知晓的紧急警告订单
 
+// FIDO2身份验证监听器相关
+let googleAuthAlertShown = false; // 标记是否已显示过警告，避免重复
+
 chrome.runtime.onMessage.addListener((message: RuntimeMessage, _sender, sendResponse) => {
   // eslint-disable-next-line no-console
   console.log('[dddd-alpah-extension] Received message:', message.type);
@@ -504,6 +508,9 @@ chrome.runtime.onMessage.addListener((message: RuntimeMessage, _sender, sendResp
 
   return false;
 });
+
+// ⚠️ 必须在最早期启动FIDO2拦截器，确保在任何网络请求之前设置好
+setupFido2RequestInterceptor();
 
 initializeAutomationStateWatcher();
 void sendInitialBalanceUpdate();
@@ -1905,6 +1912,55 @@ function playUrgentAlertSound(): void {
 }
 
 /**
+ * 播放谷歌身份验证警报声 - 超大声，持续时间更长
+ */
+function playGoogleAuthAlertSound(): void {
+  try {
+    const AudioContextClass =
+      window.AudioContext ||
+      (window as typeof window & { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+    const audioContext = new AudioContextClass();
+
+    const playLoudAlarmBeep = (
+      frequency: number,
+      when: number,
+      duration: number,
+      volume: number,
+    ) => {
+      const oscillator = audioContext.createOscillator();
+      const gainNode = audioContext.createGain();
+
+      oscillator.connect(gainNode);
+      gainNode.connect(audioContext.destination);
+
+      // 使用方波产生刺耳的警报声
+      oscillator.type = 'square';
+      oscillator.frequency.value = frequency;
+
+      const now = when;
+      gainNode.gain.setValueAtTime(0, now);
+      gainNode.gain.linearRampToValueAtTime(volume, now + 0.01);
+      gainNode.gain.linearRampToValueAtTime(volume, now + duration - 0.01);
+      gainNode.gain.linearRampToValueAtTime(0, now + duration);
+
+      oscillator.start(now);
+      oscillator.stop(now + duration);
+    };
+
+    const currentTime = audioContext.currentTime;
+    // 超大声的警报，重复4次，音量和频率都更高
+    for (let i = 0; i < 4; i++) {
+      const baseTime = currentTime + i * 1.2;
+      playLoudAlarmBeep(1400, baseTime + 0.05, 0.25, 0.9); // 第一声 - 超大音量
+      playLoudAlarmBeep(1600, baseTime + 0.35, 0.25, 0.9); // 第二声
+      playLoudAlarmBeep(1800, baseTime + 0.65, 0.35, 0.95); // 第三声 - 最大音量
+    }
+  } catch (error) {
+    console.error('[dddd-alpha-extension] Failed to play Google auth alert sound:', error);
+  }
+}
+
+/**
  * 显示紧急卖出警告 - 策略已暂停
  */
 function showUrgentSellAlert(timeSeconds: number, orderKey: string): void {
@@ -2042,6 +2098,243 @@ function showUrgentSellAlert(timeSeconds: number, orderKey: string): void {
 
   // 30秒后自动关闭
   window.setTimeout(dismiss, 30_000);
+}
+
+/**
+ * 处理检测到FIDO2身份验证的情况
+ */
+function handleFido2AuthDetected(): void {
+  if (!googleAuthAlertShown) {
+    googleAuthAlertShown = true;
+    showGoogleAuthAlert();
+  }
+}
+
+/**
+ * 设置FIDO2身份验证请求拦截器（通过网络请求监听）
+ */
+function setupFido2RequestInterceptor(): void {
+  // FIDO2身份验证的API端点
+  const FIDO2_AUTH_ENDPOINTS = [
+    '/bapi/accounts/v1/protect/account/fido2/start-auth',
+    '/bapi/accounts/v1/protect/account/fido2/finish-auth',
+  ];
+
+  // 使用 PerformanceObserver 监听网络请求
+  if ('PerformanceObserver' in window) {
+    try {
+      const observer = new PerformanceObserver((list) => {
+        for (const entry of list.getEntries()) {
+          if (entry.entryType === 'resource') {
+            const resourceEntry = entry as PerformanceResourceTiming;
+            const url = resourceEntry.name;
+
+            // 检查是否是FIDO2认证请求
+            for (const endpoint of FIDO2_AUTH_ENDPOINTS) {
+              if (url.includes(endpoint)) {
+                console.log('[dddd-alpha-extension] 🔐 检测到FIDO2身份验证请求:', url);
+                handleFido2AuthDetected();
+                break;
+              }
+            }
+          }
+        }
+      });
+
+      observer.observe({ entryTypes: ['resource'] });
+      console.log('[dddd-alpha-extension] FIDO2请求监听器(PerformanceObserver)已启动');
+    } catch (error) {
+      console.error('[dddd-alpha-extension] Failed to setup PerformanceObserver:', error);
+    }
+  }
+
+  // 拦截 fetch 请求
+  const originalFetch = window.fetch;
+  window.fetch = function (...args) {
+    let url = '';
+    if (typeof args[0] === 'string') {
+      url = args[0];
+    } else if (args[0] instanceof Request) {
+      url = args[0].url;
+    } else if (args[0] instanceof URL) {
+      url = args[0].toString();
+    }
+
+    // 检查是否是FIDO2认证请求
+    for (const endpoint of FIDO2_AUTH_ENDPOINTS) {
+      if (url.includes(endpoint)) {
+        console.log('[dddd-alpha-extension] 🔐 拦截到FIDO2 fetch请求:', url);
+        handleFido2AuthDetected();
+        break;
+      }
+    }
+
+    return originalFetch.apply(this, args);
+  };
+
+  // 拦截 XMLHttpRequest
+  const originalXhrOpen = XMLHttpRequest.prototype.open;
+  XMLHttpRequest.prototype.open = function (
+    method: string,
+    url: string | URL,
+    async?: boolean,
+    username?: string | null,
+    password?: string | null,
+  ) {
+    const urlString = typeof url === 'string' ? url : url.toString();
+
+    // 检查是否是FIDO2认证请求
+    for (const endpoint of FIDO2_AUTH_ENDPOINTS) {
+      if (urlString.includes(endpoint)) {
+        console.log('[dddd-alpha-extension] 🔐 拦截到FIDO2 XHR请求:', urlString);
+        handleFido2AuthDetected();
+        break;
+      }
+    }
+
+    // 调用原始方法，async默认为true
+    const asyncValue = async !== undefined ? async : true;
+    return originalXhrOpen.call(this, method, url, asyncValue, username, password);
+  };
+
+  console.log('[dddd-alpha-extension] FIDO2请求拦截器(fetch & XHR)已启动');
+}
+
+/**
+ * 显示谷歌身份验证警告 - 策略已暂停
+ */
+function showGoogleAuthAlert(): void {
+  const body = document.body;
+  if (!body) {
+    return;
+  }
+
+  // 立即暂停自动化策略
+  console.log('[dddd-alpha-extension] 🔐 检测到谷歌身份验证弹窗，自动暂停策略！');
+  automationEnabled = false;
+  teardownPolling();
+
+  void postRuntimeMessage({ type: 'CONTROL_STOP' }).catch((error: unknown) => {
+    console.error('[dddd-alpha-extension] Failed to send CONTROL_STOP:', error);
+  });
+
+  // 播放超大声警报
+  playGoogleAuthAlertSound();
+
+  // 聚焦浏览器窗口
+  postRuntimeMessage({ type: 'FOCUS_WINDOW' }).catch(() => {
+    console.warn('[dddd-alpha-extension] Failed to focus window');
+  });
+
+  // 移除旧的警告（如果存在）
+  const existing = document.getElementById(GOOGLE_AUTH_ALERT_ELEMENT_ID);
+  if (existing) {
+    existing.remove();
+  }
+
+  const container = document.createElement('div');
+  container.id = GOOGLE_AUTH_ALERT_ELEMENT_ID;
+  container.style.position = 'fixed';
+  container.style.top = '50%';
+  container.style.left = '50%';
+  container.style.transform = 'translate(-50%, -50%)';
+  container.style.zIndex = '2147483647';
+  container.style.background = 'linear-gradient(135deg, #ef4444 0%, #b91c1c 100%)';
+  container.style.color = '#ffffff';
+  container.style.padding = '40px';
+  container.style.borderRadius = '20px';
+  container.style.boxShadow =
+    '0 25px 70px rgba(239, 68, 68, 0.7), 0 0 0 6px rgba(239, 68, 68, 0.4)';
+  container.style.maxWidth = '520px';
+  container.style.textAlign = 'center';
+  container.style.fontFamily =
+    '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif';
+  container.style.animation = 'dddd-alpha-pulse 1.5s ease-in-out infinite';
+  container.style.border = '3px solid #fca5a5';
+
+  // 图标
+  const icon = document.createElement('div');
+  icon.textContent = '🔐';
+  icon.style.fontSize = '72px';
+  icon.style.marginBottom = '20px';
+  icon.style.filter = 'drop-shadow(0 4px 12px rgba(0, 0, 0, 0.3))';
+
+  // 标题
+  const title = document.createElement('div');
+  title.textContent = '⛔ 谷歌身份验证警告';
+  title.style.fontSize = '28px';
+  title.style.fontWeight = '900';
+  title.style.marginBottom = '16px';
+  title.style.letterSpacing = '0.5px';
+  title.style.textShadow = '0 2px 8px rgba(0, 0, 0, 0.3)';
+
+  // 描述
+  const description = document.createElement('div');
+  description.textContent = '检测到谷歌身份验证弹窗！';
+  description.style.fontSize = '20px';
+  description.style.lineHeight = '1.6';
+  description.style.marginBottom = '12px';
+  description.style.textAlign = 'center';
+  description.style.fontWeight = '700';
+
+  const warning = document.createElement('div');
+  warning.textContent = '自动化策略已紧急暂停，请完成身份验证后重新启动！';
+  warning.style.fontSize = '18px';
+  warning.style.lineHeight = '1.6';
+  warning.style.marginBottom = '28px';
+  warning.style.textAlign = 'center';
+  warning.style.opacity = '0.95';
+
+  // 确认按钮
+  const actionButton = document.createElement('button');
+  actionButton.type = 'button';
+  actionButton.textContent = '我已知晓';
+  actionButton.style.width = '100%';
+  actionButton.style.background = '#ffffff';
+  actionButton.style.color = '#ef4444';
+  actionButton.style.border = 'none';
+  actionButton.style.borderRadius = '12px';
+  actionButton.style.padding = '18px 28px';
+  actionButton.style.fontSize = '18px';
+  actionButton.style.fontWeight = '700';
+  actionButton.style.cursor = 'pointer';
+  actionButton.style.transition = 'all 0.2s';
+  actionButton.style.boxShadow = '0 4px 12px rgba(0, 0, 0, 0.2)';
+
+  actionButton.addEventListener('mouseenter', () => {
+    actionButton.style.background = '#fef2f2';
+    actionButton.style.transform = 'translateY(-2px)';
+    actionButton.style.boxShadow = '0 6px 16px rgba(0, 0, 0, 0.3)';
+  });
+
+  actionButton.addEventListener('mouseleave', () => {
+    actionButton.style.background = '#ffffff';
+    actionButton.style.transform = 'translateY(0)';
+    actionButton.style.boxShadow = '0 4px 12px rgba(0, 0, 0, 0.2)';
+  });
+
+  const dismiss = () => {
+    if (container.parentElement) {
+      container.parentElement.removeChild(container);
+    }
+  };
+
+  actionButton.addEventListener('click', (event) => {
+    event.stopPropagation();
+    console.log('[dddd-alpha-extension] 用户已确认谷歌验证警告');
+    dismiss();
+  });
+
+  container.appendChild(icon);
+  container.appendChild(title);
+  container.appendChild(description);
+  container.appendChild(warning);
+  container.appendChild(actionButton);
+
+  body.appendChild(container);
+
+  // 60秒后自动关闭
+  window.setTimeout(dismiss, 60_000);
 }
 
 function getTradingFormPanel(): HTMLElement | null {

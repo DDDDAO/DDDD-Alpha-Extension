@@ -408,6 +408,18 @@ export function Popup(): React.ReactElement {
         const rawAlphaId = typeof token.alphaId === 'string' ? token.alphaId.trim() : '';
         const alphaId = rawAlphaId.length > 0 ? rawAlphaId.toUpperCase() : null;
 
+        // 如果已存在同名代币，优先保留 mulPoint 更高的（通常是更新的代币）
+        const existing = nextDirectory[normalizedSymbol];
+        if (existing) {
+          const existingMulPoint = existing.mulPoint ?? 0;
+          const currentMulPoint = mulPoint ?? 0;
+
+          // 只有当前代币的 mulPoint 更高时才覆盖
+          if (currentMulPoint <= existingMulPoint) {
+            continue;
+          }
+        }
+
         nextDirectory[normalizedSymbol] = {
           symbol: normalizedSymbol,
           contractAddress,

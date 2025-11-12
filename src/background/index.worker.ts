@@ -661,7 +661,6 @@ async function handleFocusWindow(windowId?: number, tabId?: number): Promise<voi
       await chrome.windows.update(targetWindowId, {
         focused: true,
         drawAttention: true,
-        state: 'normal',
       });
     }
   } catch (error) {

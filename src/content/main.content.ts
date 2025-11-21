@@ -898,8 +898,9 @@ function findTradeHistoryPanel(): HTMLElement | null {
       }
 
       const normalized = content.replace(/\s+/g, ' ').toLowerCase();
-      const matchesChinese = normalized.includes('成交记录') && normalized.includes('限价');
-      const matchesEnglish = normalized.includes('trade history') && normalized.includes('limit');
+      // 币安界面改版后，成交记录标签页不再显示"限价"字样，因此只检查"成交记录"
+      const matchesChinese = normalized.includes('成交记录');
+      const matchesEnglish = normalized.includes('trade history');
       if (matchesChinese || matchesEnglish) {
         return true;
       }

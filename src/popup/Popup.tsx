@@ -1587,21 +1587,6 @@ export function Popup(): React.ReactElement {
                   <Text style={{ fontSize: 13, color: '#595959', lineHeight: 1.6 }}>
                     {t('plugin.desc2')}
                   </Text>
-                  <Text
-                    style={{ fontSize: 13, color: '#1890ff', lineHeight: 1.6, fontWeight: 500 }}
-                  >
-                    {t('plugin.desc3')}
-                  </Text>
-                  <Link href={GITHUB_REPO_URL} target="_blank" rel="noopener noreferrer">
-                    <Space size={8} align="center">
-                      <img
-                        src={GITHUB_MARK_URL}
-                        alt="GitHub"
-                        style={{ width: 18, height: 18, display: 'block' }}
-                      />
-                      <span style={{ fontSize: 13 }}>{t('plugin.viewGithub')}</span>
-                    </Space>
-                  </Link>
                 </Space>
               }
               style={{
@@ -1612,6 +1597,42 @@ export function Popup(): React.ReactElement {
               }}
             />
           )}
+
+          <Link
+            href={GITHUB_REPO_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{
+              display: 'block',
+              textAlign: 'center',
+              marginBottom: 12,
+              padding: '8px 0',
+              fontSize: 13,
+              color: '#1890ff',
+              textDecoration: 'none',
+              borderRadius: 8,
+              background: '#f0f5ff',
+              border: '1px solid #d6e4ff',
+              transition: 'all 0.2s ease',
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = '#e6f4ff';
+              e.currentTarget.style.borderColor = '#91caff';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = '#f0f5ff';
+              e.currentTarget.style.borderColor = '#d6e4ff';
+            }}
+          >
+            <Space size={8} align="center">
+              <img
+                src={GITHUB_MARK_URL}
+                alt="GitHub"
+                style={{ width: 16, height: 16, display: 'block' }}
+              />
+              <span>{t('plugin.updateNotice')}</span>
+            </Space>
+          </Link>
 
           {orderHistoryError ? (
             <Alert

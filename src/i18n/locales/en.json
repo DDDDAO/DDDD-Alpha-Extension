@@ -7,8 +7,7 @@
     "title": "Plugin Description",
     "desc1": "This plugin only assists in calculating order prices and simulates manual operations to fill in order information and click the place order button on the web page. It does not record or transmit any sensitive data.",
     "desc2": "This project is an open-source learning tool, completely free. Please make sure to confirm whether using this plugin may conflict with Binance Alpha activity rules, and assume all potential risks yourself.",
-    "desc3": "For usage tutorials, please visit the Github repository.",
-    "viewGithub": "View GitHub Repository"
+    "updateNotice": "If the plugin is unavailable, please check the GitHub repository for updates"
   },
   "token": {
     "currentToken": "Current Token",
